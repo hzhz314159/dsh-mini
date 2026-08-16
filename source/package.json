@@ -1,0 +1,26 @@
+{
+  "name": "@deepseek-ai/dsh-mini",
+  "version": "1.1.0",
+  "description": "DSH Mini — phone bridge for DeepSeek Harness Desktop (Codex-Mini style): drive DSH agent sessions from a phone browser / app",
+  "type": "module",
+  "main": "lib/index.js",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-agent": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-settings": "*"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek",
+    "harness",
+    "phone",
+    "bridge",
+    "codex-mini",
+    "mobile"
+  ]
+}
