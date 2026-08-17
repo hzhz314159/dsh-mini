@@ -1,11 +1,17 @@
 // cdp-eval.cjs — 对真机 WebView（经 adb forward tcp:9222）执行 JS 并打印结果
 // 用法: node cdp-eval.cjs "<js-expr>" [--timeout-ms N]
+//      node cdp-eval.cjs --file <path.cjs> [--timeout-ms N]   (从文件读 JS，避开 PS5.1 引号问题)
 (async () => {
-  const expr = process.argv[2];
-  const timeoutArg = process.argv.findIndex((a) => a === "--timeout-ms");
-  const timeoutMs = timeoutArg > 0 ? parseInt(process.argv[timeoutArg + 1], 10) : 15000;
+  let expr;
+  let timeoutMs = 15000;
+  for (let i = 2; i < process.argv.length; i++) {
+    const a = process.argv[i];
+    if (a === "--file") { expr = require("fs").readFileSync(process.argv[++i], "utf8"); }
+    else if (a === "--timeout-ms") { timeoutMs = parseInt(process.argv[++i], 10); }
+    else if (!expr) { expr = a; }
+  }
   if (!expr) {
-    console.error("usage: node cdp-eval.cjs <js-expr> [--timeout-ms N]");
+    console.error("usage: node cdp-eval.cjs <js-expr|--file path> [--timeout-ms N]");
     process.exit(1);
   }
   let list;

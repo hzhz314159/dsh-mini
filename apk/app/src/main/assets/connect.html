@@ -65,10 +65,10 @@
     <h1>DSH-Mobile</h1>
     <p class="sub">在电脑的 DSH 里点左下角「手机连接」图标<br />用本应用扫桌面二维码，即可遥控电脑上的 AI 会话</p>
     <div class="card glass">
-      <button class="btn" id="scan" type="button">📷 扫码连接</button>
+      <button class="btn" id="scan" type="button">扫码连接</button>
       <div class="divider">或手动输入</div>
       <div class="row">
-        <input id="url" type="url" inputmode="url" placeholder="http://IP:端口/dsh-mini/?token=…" />
+        <input id="url" type="url" inputmode="url" placeholder="http://IP:端口/?token=…" />
         <button class="btn ghost" id="go" type="button">连接</button>
       </div>
     </div>
@@ -92,7 +92,8 @@
     var u = null;
     try { u = new URL(t); } catch (e) { return null; }
     if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-    var base = u.origin + "/dsh-mini/";
+    // v3：GUI 在网关根路径（http://IP:端口/?token=…），不再有 /dsh-mini/ 前缀
+    var base = u.origin + "/";
     var token = u.searchParams.get("token");
     return base + (token ? "?token=" + encodeURIComponent(token) : "");
   }

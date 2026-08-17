@@ -15,6 +15,7 @@ import android.graphics.Paint;
 import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.util.Log;
 import android.util.Size;
 import android.view.View;
 import android.view.WindowManager;
@@ -50,6 +51,7 @@ import java.util.concurrent.Executors;
 
 public class ScanActivity extends Activity implements LifecycleOwner {
 
+    private static final String TAG = "DshMiniScan";
     static final String EXTRA_URL = "url";
     private static final int REQ_CAMERA = 9001;
 
@@ -195,7 +197,8 @@ public class ScanActivity extends Activity implements LifecycleOwner {
                     provider.unbindAll();
                     provider.bindToLifecycle(ScanActivity.this, selector, preview, analysis);
                 } catch (Exception e) {
-                    lastHint("相机初始化失败：" + e.getMessage());
+                    Log.e(TAG, "startCamera failed", e);
+                    lastHint("相机初始化失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
                 }
             }
         }, ContextCompat.getMainExecutor(this));
@@ -292,8 +295,9 @@ public class ScanActivity extends Activity implements LifecycleOwner {
                 if (results != null) {
                     for (Result r : results) {
                         String t = r.getText();
-                        if (t != null && (t.startsWith("http://") || t.startsWith("https://"))
-                                && t.contains("/dsh-mini")) {
+                        // v3 网关二维码为根路径 http://<IP>:<port>/?token=...（不含 /dsh-mini 前缀），
+                        // 因此只校验 http(s)，具体连通性由 JS 端 testUrl 自检兜底
+                        if (t != null && (t.startsWith("http://") || t.startsWith("https://"))) {
                             onDecoded(t);
                             break;
                         }

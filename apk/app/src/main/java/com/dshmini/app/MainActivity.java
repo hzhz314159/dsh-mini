@@ -157,7 +157,8 @@ public class MainActivity extends Activity {
             Uri u = intent.getData();
             String host = u.getHost();
             int port = u.getPort();
-            String base = (port > 0 ? host + ":" + port : host) + "/dsh-mini/";
+            // v3：网关根路径直接出 GUI（http://IP:port/?token=…）
+            String base = (port > 0 ? host + ":" + port : host) + "/";
             String t = u.getQueryParameter("token");
             String url = "http://" + base + (t != null && !t.isEmpty() ? "?token=" + t : "");
             prefs.edit().putString(KEY_URL, url).apply();
@@ -279,6 +280,17 @@ public class MainActivity extends Activity {
             });
         }
 
+        // 返回连接页（GUI 设置里的「返回连接页」按钮）；clear 的语义别名，保留上次地址供重连
+        @android.webkit.JavascriptInterface
+        public void gotoConnect() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    web.loadUrl("file:///android_asset/connect.html");
+                }
+            });
+        }
+
         // 上次成功连接的地址（connect.html 打开时回填，便于虚拟机/换网后重连）
         @android.webkit.JavascriptInterface
         public String getLastUrl() {
@@ -320,11 +332,11 @@ public class MainActivity extends Activity {
         }
 
         // 原生侧连通自检：connect.html 是 file:// 页面，fetch 会被 CORS 拦截，
-        // 这里用 HttpURLConnection 直连 /dsh-mini/api/health?token=…
+        // 这里用 HttpURLConnection 直连 /dsh-mini/api/health?token=…（旧协议端点保留兼容）
         // 结果回调 window.__dshMiniTestCb(ok, code, err)。
         @android.webkit.JavascriptInterface
         public void testUrl(final String url) {
-            // url 形如 http://IP:端口/dsh-mini/?token=…  →  拆出 query 再拼接 /api/health
+            // url 形如 http://IP:端口/?token=…（v3 根路径出 GUI）→ 拼 /dsh-mini/api/health
             String path = url;
             String query = "";
             int qi = url.indexOf('?');
@@ -332,7 +344,14 @@ public class MainActivity extends Activity {
                 query = url.substring(qi);
                 path = url.substring(0, qi);
             }
-            final String health = path.replace("/dsh-mini/", "/dsh-mini/api/") + "health" + query;
+            // 兼容旧地址（含 /dsh-mini/ 子路径）
+            String health;
+            if (path.contains("/dsh-mini/")) {
+                health = path.replace("/dsh-mini/", "/dsh-mini/api/") + "health" + query;
+            } else {
+                String p = path.endsWith("/") ? path.substring(0, path.length() - 1) : path;
+                health = p + "/dsh-mini/api/health" + query;
+            }
             new Thread(new Runnable() {
                 @Override
                 public void run() {
