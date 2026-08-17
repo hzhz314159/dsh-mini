@@ -3,7 +3,7 @@
 // 职责：
 //   1) 左侧栏 footer 手机图标（sidebar.footer.action，order 210，渲染在
 //      side-session 的「临时会话」图标上方）→ 网关未开启时点击自动跳转
-//      DSH 设置页；已开启时弹出二维码面板（系统相机 / DSH Mini 应用扫码）。
+//      DSH 设置页；已开启时弹出二维码面板（系统相机 / DSH-Mobile 应用扫码）。
 //   2) 设置页分节（settings.section，order 70）：局域网网关开关、token
 //      显示/重置、绑定地址与端口、二维码预览、上传限额、连接自检。
 //   3) 余额转发：监听 Desktop 壳的 "dsh-balance-changed" 事件 + 周期性
@@ -248,7 +248,7 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { className: "dsm-dialog", onClick: function (e) { e.stopPropagation(); } },
-          h("div", { className: "dsm-dialog-title" }, "手机连接 DSH Mini"),
+          h("div", { className: "dsm-dialog-title" }, "手机连接 DSH-Mobile"),
           gw.lanEnabled
             ? h(
                 "div",
@@ -321,7 +321,7 @@ window.__ModuleLoader__.load({
               : null,
             h("span", { className: gw.reachable ? "dsm-ok" : "dsm-bad" }, gw.reachable ? "手机可访问" : gw.lanEnabled ? "手机不可访问" : "仅本机")
           ),
-          h("div", { className: "dsm-hint" }, "用手机系统相机扫码，或在 DSH Mini 应用内扫码连接（连接需同一 Wi-Fi）。"),
+          h("div", { className: "dsm-hint" }, "用手机系统相机扫码，或在 DSH-Mobile 应用内扫码连接（连接需同一 Wi-Fi）。"),
           h(
             "div",
             { className: "dsm-actions" },
@@ -528,7 +528,7 @@ window.__ModuleLoader__.load({
               h(
                 "div",
                 { className: "dsm-set-hint" },
-                "手机系统相机扫码，或 DSH Mini 应用内扫码。" + (gw.reachable ? "" : "（网关未就绪或未检测到局域网 IP，手机无法访问）")
+                "手机系统相机扫码，或 DSH-Mobile 应用内扫码。" + (gw.reachable ? "" : "（网关未就绪或未检测到局域网 IP，手机无法访问）")
               )
             )
           : null,
@@ -801,7 +801,7 @@ window.__ModuleLoader__.load({
       ctx.effect(function () {
         try {
           const ret = ctx.slots.inject("settings.section", function () {
-            const dispose = ctx.slots.register({ name: "settings.section", id: "dsh-mini", order: 70, label: function () { return "DSH Mini 手机桥"; } }, SettingsCard);
+            const dispose = ctx.slots.register({ name: "settings.section", id: "dsh-mini", order: 70, label: function () { return "DSH-Mobile 手机桥"; } }, SettingsCard);
             beacon("slot-settings", "registered");
             return dispose;
           }, "name");

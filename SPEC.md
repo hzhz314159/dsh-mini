@@ -413,4 +413,96 @@ data: {"status":"complete"}
 2. 真机沉浸式观感：状态栏/导航栏透明、刘海避开、液态玻璃视觉效果。
 3. 虚拟机/模拟器调试（无相机）：地址输入 + `testUrl` 自检 → 连接（见 `apk/README-APK.md`「虚拟机调试」）。
 
+## 16. v1.3.x 问题清单与解决方案设计（2026-08-16，用户反馈 5 项）
+
+> 本轮只做方案设计，用户确认后再实施。证据均来自真机 CDP 实测与源码阅读。
+
+### 16.1 问题① 页面不能自适应适配
+
+**现状证据**：手机端 UI 尺寸多为固定 px（`--topbar-row-height: 52px`、输入 15px、`min(760px, 86%)` 等）；仅 3 个断点：`max-width:700px` 紧凑、`min-width:900px` iPad 双栏、横屏未处理。Android WebView `env(safe-area-inset-bottom)` 恒为 0（与顶部同坑：只有 `--dsh-safe-top` 桥，无 `--dsh-safe-bottom`）→ 底部手势条区域可能被遮挡。小屏（≤360px）chip 溢出、大屏（平板/横屏）留白不均衡。
+
+**方案（待确认）**：
+1. 安全区补齐：Bridge 新增 `getSafeBottom()`（读 `navigation_bar_height`），页面 JS 设 `--dsh-safe-bottom`；`--composer-bottom-pad` 等所有底部偏移改 `max(env(safe-area-inset-bottom), var(--dsh-safe-bottom))`；键盘位移公式在原有基础上再叠加 safe-bottom。
+2. 尺寸归一化：关键尺寸改 `clamp()`（如 `--topbar-row-height: clamp(44px, 12vw, 56px)`、气泡/字体 `clamp(14px, 4.2vw, 17px)`），小屏自动收敛、平板放大，不再依赖单一断点。
+3. 断点扩展：`≤360px` 更紧凑（隐藏次要 chip、行距收紧）；`700–900px` 中间档（内容宽度 `min(100vw-32px, 720px)` 居中）；继续 `≥900px` 双栏；横屏（`orientation:landscape`）时 content 居中限宽 + 顶栏保留。
+4. 真机验收：360/375/412/768/1024 五档直接 CDP 注入视口验证无溢出/无遮挡。
+
+### 16.2 问题② 没有思考折叠 / 工具调用折叠 / 没有任务表
+
+**现状证据**：`applyStep`（public/index.html:659+）将 thinking 渲染为 `process-thinking` 直出（不折叠），工具渲染为 `process-tool` 胶囊横滚（不折叠），均无头部/展开收起；`KNOWN_SESSION_EVENT_TYPES` 无 plan/任务事件——SSE 里只有 thinking/tool/assistant/user/title/model/status。
+
+**方案（待确认）**：
+1. **思考折叠**：`curThinking` 块包一层 `<details class="think-block">`（或自定义折叠头）：头部「💭 思考过程 + 耗时/轮次」，默认收起，展开显示流式内容；流式期间自动展开（`update` 时若未用户手动收起则 open），结束后保持用户最后状态。
+2. **工具调用折叠**：每条 assistant 消息的 `process-tool-row` 改为可折叠块（头部「🛠 工具调用 ×N」+ 状态摘要 ✓/✕/…，默认收起，展开显示胶囊明细）。
+3. **任务表**：UI 从 SSE 流聚合（host 不加事件）——`status:turn-start` 建任务容器，`tool:call/result` 逐条填充（图标+工具名+状态：进行中/完成/失败），`turn-end` 收束并显示「任务 ×N · 完成 M」。控件样式复用 thread-menu 玻璃卡；长会话分片渲染时任务表也折叠省空间。
+4. 验收：一轮含 2+ 工具调用的回复，思考/工具默认折叠、可展开、任务表逐条更新。
+
+### 16.3 问题③ 唤起键盘后输入框不随键盘上滚
+
+**现状证据（根因已坐实）**：`public/index.html:1144-1151` 的位移公式 `shift = Math.max(0, vv.height - window.innerHeight)` ——**方向写反**。`interactive-widget=overlays-content` 下键盘弹起时 `visualViewport.height` 缩小（800→560）而 `window.innerHeight` 不变 → `shift = 560-800 = -240 → max(0,-240)=0` → 恒 0，composer 不移位，键盘盖住输入框。
+
+**方案（待确认）**：
+1. 修正公式：`shift = Math.max(0, window.innerHeight - vv.height)`，并监听 `vv.resize` + `window.resize`（兜底 WebView 不触发 vv 事件的场景）；位移叠加 safe-bottom。
+2. APK 侧：MainActivity `windowSoftInputMode` 显式 `adjustResize`（键盘弹起重排 WebView 视口，双重保险）；`android:windowSoftInputMode="adjustResize"` 写入 Manifest。
+3. 真机验收：输入框聚焦 → composer 平滑上移贴键盘顶（实测 keyboard-open 类 + shift px 正确、blur 回位）。
+
+### 16.4 问题④ 历史会话载入过于缓慢
+
+**现状证据（瓶颈定位）**：真机 CDP 实测长会话 `4597 steps / 282KB`，网络仅 **119ms**；卡顿在前端：`loadHistory` 逐 step `applyStep` → 每 step 一次 `scrollDown()`（`scrollTop=scrollHeight` 强制同步布局 ×4597）→ DOM 反复 append/重排，数秒白屏。
+
+**方案（待确认，按收益排序）**：
+1. **渲染期挂起滚动**（见效最快）：标记 `renderingHistory=true`，历史批量渲染期间跳过全部 `scrollDown()`，末尾一次性 `scrollTop=scrollHeight`；同步合并相邻同类型 step（assistant 连续 N 条 → 一条）。
+2. **分片渲染**：`requestAnimationFrame` 每帧处理 ≤200 个 step（帧间让出主线程），进度条（「载入历史 45%…」）。
+3. **步数降载（host 侧）**：`/history` 响应将相邻同 type/同消息 step 合并为 `{type, text[]}` 或直接返回平铺文本段，4597 条 → 数百条；desktop 端无影响（只改 /dsh-mini 私有端点）。
+4. **本地缓存**：`localStorage` 缓存 `history:<id>`（含 updatedAt/step 数），会话未变化时秒开，SSE 增量补齐（依赖 live 双源去重已具备）。
+5. 验收：4597-step 会话打开 <1s（CDP 计时），首屏无需等待全部渲染。
+
+### 16.5 问题⑤ 手机上新建的会话电脑端没有同步
+
+**现状证据与根因推断**：`newSession`（lib/index.js:788+）用 `agents.create`（core DSH 服务，必然产生 session 事件），创建会话 `meta.cwd = ~/.dsh/dsh-mini/workspace/<hash>`（非桌面工作区）→ 桌面会话列表按工作区维度展示（官方 UI 以 workspace 为容器），**手机工作区不在桌面当前工作区 → 桌面看不到**；此外手机端「新建」后无任何桌面可见反馈。
+
+**方案（待确认，二选一或组合）**：
+1. **cwd 对齐桌面工作区（推荐）**：手机「新建会话」时 host 默认取桌面当前工作区：`ctx.get('workspaces')`（若服务存在）→ 当前 workspace 路径；无则取**桌面最近活跃会话的 cwd** 或 `process.cwd()`；仍无则回退 MINI_HOME/workspace。→ 新会话落在桌面当前工作区，侧栏即时可见。
+2. **工作区选择器**：手机端新建弹窗列出最近工作区（host 新增 `GET /workspaces` 端点：聚合桌面 workspace 服务 + 历史会话 cwd 去重），用户自选。
+3. **联动提示**：新建成功 → 手机端提示 + client 半边监听 `session/event`（session 创建类事件）→ 桌面侧栏无感刷新（若事件桥可用）；最低限度在手机端显示「已创建：可在桌面左侧栏查看」。
+4. 验收：手机新建 → 桌面侧栏 5s 内出现该会话（同工作区）；点开即双向可用。
+
+### 16.6 实施顺序与范围
+
+- 顺序：③（根因一行，收益最大）→ ④（1+2，立刻提速）→ ②（折叠/任务表 UI）→ ①（安全区+clamp+断点）→ ⑤（同步）。
+- host 改动：仅 16.4-3 步数合并与 16.5（newSession cwd 对齐 + 可选 /workspaces 端点），其余纯 `public/index.html` + APK（getSafeBottom 桥 + adjustResize）。
+- 不动：lib/index.js 事件系统、桌面 client 半边结构（除非 16.5-3 需要）。
+
+### 16.7 实施记录（v1.3.x，用户确认方案后完成）
+
+**用户决策**：⑤=仅工作区选择器（不做 cwd 自动对齐）；②=三件都做；④=全套 4 项。
+
+**③ 键盘修复**（public/index.html + APK）：
+- `shift = Math.max(0, window.innerHeight - vv.height + safeBottom())`（原 `vv.height - innerHeight` 方向反恒 0）；`vv.resize` + `vv.scroll` + `window.resize` 三监听；`--keyboard-shift` 叠加 `--dsh-safe-bottom`。
+- MainActivity `setSoftInputMode(SOFT_INPUT_ADJUST_RESIZE)` + Manifest `android:windowSoftInputMode="adjustResize"`。
+- Bridge 新增 `getSafeBottom()`（navigation_bar_height，真机实测 120px）；`initSafeTop` 扩为 `initSafeAreas`（同时设 `--dsh-safe-top/--dsh-safe-bottom`）；`--composer-bottom-pad` 改 `max(56px, calc(max(env(safe-area-inset-bottom), var(--dsh-safe-bottom)) + 30px))`。
+
+**④ 历史提速**（lib/index.js + public/index.html）：
+- host：`buildSegments(steps)` 合并相邻 thinking/assistant/tool 段（各带 `seqMax`），`getHistory` 返回 `{steps, segments, revision}`；实测 19740 steps → 219 segments（85×），host 响应 482ms。
+- 前端：`renderSegments(segs, batched)` rAF 每帧 ≤100 段；`renderBatch` 挂起 scrollDown（applyStep/scrollDown 均判）；`lastSeqMax` 增量基准（applyStep 同步推进）；`loadHistory` 三态：cacheHit（localStorage `dshhist:<id>` {rev,segments,title,model} 秒开渲染 + 后台 fetch 核 rev 相同不重渲）/ 全量 / merge（`segments.filter(sg => sg.seqMax > lastSeqMax)` 只补新段）。
+- 实测：15380-step 会话分片渲染 ~1s，滚底正常。
+- **SSE 流式节流**（防 WebView 卡死，曾实测卡死）：step 事件进 `sseQueue`，`setTimeout 50ms` 批量 `sseFlush`（renderBatch 包批 + 一次 scrollDown）。
+
+**② 折叠 + 任务表**（public/index.html）：
+- `newThinkingBlock(expand)`：`.think-block`（toggle「💭 思考过程」+ `.think-body` max-height 过渡，`thinkUserCollapsed` 记录用户手动选择）；历史/批量默认折叠、live 流式默认展开、turn-end `closeThinkBlocks()`（未手动操作才自动折叠）。
+- 工具折叠：`.tools-block`（toggle「🛠 工具调用 ×N」+ `.tools-body` 默认 closed），`renderToolPill` 计数。
+- 任务表：`taskCardReset/Add/Finish`（turn-start 建卡、tool call/result 填充「进行中/完成/失败」（callId 匹配，无则顺序）、turn-end 收束「×N · 完成 M」+ closed）；**仅 live applyStep 触发**，历史批量渲染不建卡。
+- **关键 bug 修复**：原 `newAssistantBlock` 里 `curThinking.remove()` 把思考块从消息流删除（旧「思考并入回复」语义残留）→ 改为收成折叠态保留在回复上方。
+
+**① 自适应**（public/index.html）：
+- `--topbar-row-height: clamp(44px, 11vw, 52px)`；新增 700–900px 中间档（内容限宽 720px 居中）、≤360px 紧凑档（40px 行高、chip 收敛）、横屏矮视口兜底档（居中限宽 680px）；真机 360px 宽命中紧凑档（topbarH=40px）。
+
+**⑤ 工作区选择器**（lib/index.js + public/index.html）：
+- host `GET /dsh-mini/api/workspaces`：`listWorkspaces(ctx)` = 默认工作区（MINI_HOME/workspace）+ `ctx.get("workspaceRegistry").list()`（实测返回桌面「DSH Zone」）+ 历史会话 cwd 去重（排除纯 hash 目录）。
+- 手机端：`openWsPicker()` bottom-sheet（`.ws-menu` 玻璃卡，safe-bottom 定位）→ 选工作区 → `newThreadWithCwd(cwd)` POST /threads/new {cwd} → 新会话落所选工作区 → 桌面侧栏按工作区可见。实测 6 行（默认 + DSH Zone + 4 历史）。
+
+**品牌统一**：桌面 client 半边全部用户可见文案改 **DSH-Mobile**（二维码弹窗标题「手机连接 DSH-Mobile」、扫码提示、设置卡 label「DSH-Mobile 手机桥」）；README 标题、package.json description 同步；包名 `@deepseek-ai/dsh-mini` 与装配链不动。
+
+**真机验证（华为 nova7se，Android 10）全绿**：历史 85× 压缩分片渲染滚底 ✓；think=9 保留折叠 + 点击展开（212 字内容）✓；tools 全折叠 ✓；任务卡 live 出现 + turn-end 收束 ✓；SSE 节流（esState=1 不断流）✓；ws 选择器 6 行 ✓；safe-bottom=120px ✓；紧凑档命中 ✓。桌面端 DSH-Mobile 改名待用户刷新可见（键盘随动需真机实测）。
+
 

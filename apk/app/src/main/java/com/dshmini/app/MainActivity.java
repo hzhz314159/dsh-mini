@@ -60,6 +60,8 @@ public class MainActivity extends Activity {
         // 深色背景下用浅色状态栏图标（关掉浅色图标 = 默认浅）
         vis &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         decor.setSystemUiVisibility(vis);
+        // 键盘弹起重排 WebView 视口（配合页面 visualViewport 位移，输入框随键盘上滚）
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         web = new WebView(this);
         web.setBackgroundColor(0xFF0D0D0D);
@@ -259,6 +261,17 @@ public class MainActivity extends Activity {
         @android.webkit.JavascriptInterface
         public int getSafeTop() {
             int res = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (res > 0) {
+                try { return getResources().getDimensionPixelSize(res); } catch (Exception e) { /* fallthrough */ }
+            }
+            return 0;
+        }
+
+        // 导航栏高度 px（沉浸式安全区）：Android WebView 中 env(safe-area-inset-bottom) 恒为 0，
+        // 页面 JS 用此值设置 --dsh-safe-bottom，composer 才不会被底部手势条/导航栏遮挡。
+        @android.webkit.JavascriptInterface
+        public int getSafeBottom() {
+            int res = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
             if (res > 0) {
                 try { return getResources().getDimensionPixelSize(res); } catch (Exception e) { /* fallthrough */ }
             }

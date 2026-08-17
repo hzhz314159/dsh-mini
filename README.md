@@ -1,4 +1,4 @@
-# DSH Mini（手机桥）
+# DSH-Mobile（手机桥）
 
 把 Codex-Mini 的「手机 ↔ 电脑端 AI 会话」桥接体验复刻到 **DeepSeek Harness Desktop（DSH）**：手机发文字 / 图片 / 文件，实时看到 DSH agent 的思考、工具调用与回复，并能管理会话、切换模型、停止生成。
 
