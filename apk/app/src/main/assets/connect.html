@@ -77,11 +77,13 @@
   </div>
   <script>
   "use strict";
-  // 沉浸式安全区：APK WebView 桥读状态栏高度（Android env() 不可靠恒 0）
+  // 沉浸式安全区：APK WebView 桥读状态栏高度（Android env() 不可靠恒 0）。
+  // 桥返回物理像素，除以 devicePixelRatio 才是 CSS px（华为 nova7se dpr=3：108px→36px）。
   try {
+    var dpr = window.devicePixelRatio || 1;
     var st = window.DshMiniBridge && window.DshMiniBridge.getSafeTop;
     var px = st ? Number(window.DshMiniBridge.getSafeTop()) : 0;
-    if (px > 0) document.documentElement.style.setProperty("--dsh-safe-top", px + "px");
+    if (px > 0) document.documentElement.style.setProperty("--dsh-safe-top", Math.round(px / dpr) + "px");
   } catch (e) { /* 无桥环境忽略 */ }
   var statusEl = document.getElementById("status");
   function say(msg, cls) { statusEl.textContent = msg; statusEl.className = cls || ""; }

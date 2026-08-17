@@ -15,11 +15,13 @@ import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.MediaStore;
 import android.view.View;
+import android.view.ViewTreeObserver;
 import android.view.WindowManager;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -40,6 +42,8 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private ValueCallback<Uri[]> filePathCallback;
+    private final Rect kbFrame = new Rect();   // 键盘监听：可见区域帧
+    private int lastKbCssPx = 0;               // 上次下发的键盘高度（CSS px），避免重复 evaluate
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -60,12 +64,37 @@ public class MainActivity extends Activity {
         // 深色背景下用浅色状态栏图标（关掉浅色图标 = 默认浅）
         vis &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
         decor.setSystemUiVisibility(vis);
-        // 键盘弹起重排 WebView 视口（配合页面 visualViewport 位移，输入框随键盘上滚）
+        // 键盘弹起重排 WebView 视口（配合页面 visualViewport 位移，输入框随键盘上滚）。
+        // 注意：华为等 ROM 中 ADJUST_RESIZE 与沉浸式 LAYOUT_FULLSCREEN/LAYOUT_HIDE_NAVIGATION
+        // 组合被系统忽略（真机实测 vv/innerHeight 键盘期间恒不变），真正可靠的是下面的
+        // 布局监听桥（getWindowVisibleDisplayFrame 与软键盘模式无关，永远反映可见区域）。
         getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         web = new WebView(this);
         web.setBackgroundColor(0xFF0D0D0D);
         setContentView(web);
+
+        // ---- 键盘布局监听桥 ----
+        // 键盘弹出/收起 → 计算键盘高度（CSS px）→ evaluateJavascript window.__dshSetKb(cssPx)。
+        // 页面 JS 用 --keyboard-shift 位移 composer-shell，输入框随键盘上滚。
+        web.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+            @Override
+            public void onGlobalLayout() {
+                try {
+                    View decor = getWindow().getDecorView();
+                    decor.getWindowVisibleDisplayFrame(kbFrame);
+                    int screenH = decor.getHeight();
+                    int kbPx = Math.max(0, screenH - kbFrame.bottom);
+                    float density = getResources().getDisplayMetrics().density;
+                    int cssPx = kbPx > 150 ? Math.round(kbPx / density) : 0; // 150px 物理=远小于键盘、远大于导航栏
+                    if (cssPx != lastKbCssPx) {
+                        lastKbCssPx = cssPx;
+                        web.evaluateJavascript(
+                            "window.__dshSetKb && window.__dshSetKb(" + cssPx + ")", null);
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -73,7 +102,7 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
         s.setMediaPlaybackRequiresUserGesture(false);
-        s.setUserAgentString(s.getUserAgentString() + " DSHMiniApp/1.2.0");
+        s.setUserAgentString(s.getUserAgentString() + " DSHMiniApp/1.3.1");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }

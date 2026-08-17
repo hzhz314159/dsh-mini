@@ -505,4 +505,60 @@ data: {"status":"complete"}
 
 **真机验证（华为 nova7se，Android 10）全绿**：历史 85× 压缩分片渲染滚底 ✓；think=9 保留折叠 + 点击展开（212 字内容）✓；tools 全折叠 ✓；任务卡 live 出现 + turn-end 收束 ✓；SSE 节流（esState=1 不断流）✓；ws 选择器 6 行 ✓；safe-bottom=120px ✓；紧凑档命中 ✓。桌面端 DSH-Mobile 改名待用户刷新可见（键盘随动需真机实测）。
 
+---
+
+## 17. 用户反馈：页面尺寸不对 / 键盘上滚不生效 / 学 Codex-Mini 折叠与任务显示（调研完成，方案待确认）
+
+用户原话：「页面尺寸不对，键盘上滚不生效；https://github.com/CoimgRain/Codex-Mini 自习学习人家的折叠和任务显示是怎么做的，整理进 spec 文档，给我改动计划，有不明白的问我」
+
+### 17.1 页面尺寸根因（CDP 真机坐实）
+
+- 实测：innerW=360 innerH=800 dpr=3（screenH=800=2400/3）；appH=800 正常；**topbarH=138px 超高、composerH=218px 超大**（thread 区仅 443px）。
+- 根因：Bridge `getSafeTop()`=108、`getSafeBottom()`=120 返回**物理像素**，页面 JS 直接当 CSS px 用（未除 dpr=3）。应为 36px / 40px。后果：topbar padding 108px（应 36）、`--composer-bottom-pad=max(56px, 120+30)=150px`（应 70px）→ 顶栏太高、底部大留白、内容区被压扁。
+- 修复：`initSafeAreas` 内 `px / window.devicePixelRatio`（兜底 ≥1）。
+
+### 17.2 键盘上滚不生效根因（CDP 真机坐实）
+
+- 实测：聚焦 textarea 键盘弹起后 innerHeight=800 **不变**、vv.height=800 **不变**（vv.resize 永不触发）→ shift 恒 0。
+- 根因：华为 WebView 中 `SOFT_INPUT_ADJUST_RESIZE` 与沉浸式 `SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN/LAYOUT_HIDE_NAVIGATION` **冲突被系统忽略**（flag 组合官方不兼容）。
+- 修复（正解）：**native 布局监听桥**——MainActivity `decorView.getViewTreeObserver().addOnGlobalLayoutListener` + `getWindowVisibleDisplayFrame()`（与软键盘模式无关，永远反映可见区域）→ 键盘 CSS px = `(screenH - visibleBottom) / density` → `web.evaluateJavascript("window.__dshSetKb && window.__dshSetKb(" + cssPx + ")")`；页面 `window.__dshSetKb(cssPx)` 设 `--keyboard-shift` + `keyboard-open` class；vv 逻辑保留作 iOS/Chrome 兜底。composer-shell transform 已接 `--keyboard-shift`（public/index.html :230-234）。
+
+### 17.3 Codex-Mini 折叠/任务实现调研（v5.5.4，克隆于 E:\DSH Zone\work\codex-mini-ref）
+
+核心文件：`macos/CodexMini/CodexMini/Resources/CodexMiniProject/public/index.html`（5228 行）+ server.js。
+
+- **无独立任务卡**。任务显示 = process feed 内 start/complete/error 状态行 + 工具胶囊行 + 线程列表状态字段。
+- server.js step.kind 模型（:1641-1662）：`failureText→{kind:'error',label:'失败'}`；`payload.type==='task_started'→{kind:'start',label:'开始',text:'开始处理这条消息'}`；`'task_complete'→{kind:'complete',label:'完成',text:'回复完成'}`；`'agent_reasoning'→{kind:'thinking',label:'思考'}`；`'agent_tool_call'→{kind:'tool',label:'工具',callId:call_id}`；assistant phase commentary→thinking；phase final_answer→{kind:'final'}。turn 聚合（:1787-1813）：statusSteps 有序聚合 start/thinking/tool/complete/error；failed=completed&&!final → 兜底 push error step；status 字段 running/complete/error/idle 供线程列表。
+- 前端折叠（index.html :3528-3566 `addDetails(message, steps)`）：消息尾部建 `<details class="process"><summary>查看详细过程</summary><ul class="steps"><li>标签：文本</li>…</ul></details>`（默认收起=无 open 属性，追加到 .bubble-wrap）；`captureVisibleProcessSteps` 扫描 bubble 内 .process-start/complete/error/thinking/tool 节点 → {label:思考/工具/开始/完成/失败, text}，无过程但有正文 →「已生成内容」。live 时先 `renderProcessSteps(el, steps)`（:3283-3377）在 bubble 内渲染 process-feed（.process-thinking markdown-body + .process-tool-row 横向滚动胶囊行 + 事件行，带 FLIP 位移动画），完成后 addDetails 折叠收纳。
+- CSS（:1081-1144）：.process-feed grid gap0、`>+*` margin-top 15px、工具行 margin-top 2px；.process-thinking 15px/1.66；.process-tool 胶囊（flex none, padding 4px 8px, border-radius 999px, 11px, faint 色）；`details.process {margin-top:10px; color:var(--muted); font-size:12px}`；summary cursor:pointer；.steps {max-height:180px; overflow:auto; border-top:1px solid var(--line)}。
+- **与我们的差异**：我们 = think-block + tools-block + task-card 三件套（视觉碎）；Codex = 每轮一个 details.process 收纳全部过程（思考+工具+状态行），消息流干净。
+
+### 17.4 改动计划（待用户确认，见下方问题）
+
+1. **页面尺寸**：initSafeAreas 除 dpr；核对 topbar/composer 实际高度恢复（topbar≈76px、composer pad 70px）。
+2. **键盘**：MainActivity 布局监听桥 + 页面 `__dshSetKb` 接线（保留 vv 兜底）。
+3. **折叠/任务（方案 A 完全 Codex 式 / 方案 B 混合保留任务卡）**：
+   - A：删 think-block/tools-block/task-card；每轮 assistant 消息 = 正文 bubble + details.process（summary「查看详细过程」+ 可选计数徽标「思考×N · 工具×M」）；live 展开 feed（thinking 块 + 工具胶囊行 + start/complete/error 状态行），turn-end 收折；历史直接折叠态渲染（按 turn 分组，复用 segments 的 status 段）；error 映射（reason=error/aborted/blocked/interrupted → 「失败/已停止」行）；线程列表 title-dot 增加 error 红点（可选）。
+   - B：保留任务卡，仅把 think/tools 并入每轮 details。
+4. 真机全验证 + SPEC 17.5 记录 + APK 重建 + zip/git 交付。
+
+### 17.5 实施记录（v1.3.1，三项全做，用户确认方案 A + 原生键盘桥 + dpr 修复）
+
+**① 页面尺寸修复（public/index.html initSafeAreas）**：
+- `px / window.devicePixelRatio`（兜底 1）。真机实测：safeTop 108→**36px**、safeBottom 120→**40px**、topbarH 138→**66px**、composerH 218→**138px**、thread 区 443→**596px**。connect.html 同步修（.wrap padding）。
+
+**② 键盘原生布局监听桥（MainActivity.java + public/index.html）**：
+- MainActivity：`web.getViewTreeObserver().addOnGlobalLayoutListener` + `decor.getWindowVisibleDisplayFrame(kbFrame)`；`kbPx = max(0, decor.getHeight() - kbFrame.bottom)`；`cssPx = kbPx > 150 ? round(kbPx/density) : 0`；变化才 `evaluateJavascript("window.__dshSetKb && window.__dshSetKb(" + cssPx + ")")`。ADJUST_RESIZE 保留（不冲突时兜底）。
+- 页面：`window.__dshSetKb(cssPx)` 设 `--keyboard-shift` + `keyboard-open` class；vv 逻辑改走同一函数（iOS/Chrome 兜底）。真机实测：focus → kbOpen=true、shift=**278px**（华为键盘 834px 物理 / dpr 3）。
+
+**③ 折叠/任务对齐 Codex-Mini（方案 A，public/index.html 大改）**：
+- 删除 think-block/tools-block/task-card 三件套（CSS+JS 全清）。
+- 每轮 assistant 消息 = `.bubble`（正文）+ `details.process`（summary「查看详细过程」+ 右侧 `.ps-c` 计数徽标「思考 N · 工具 M」）。
+- 新函数：`ensureAssistant(liveOpen)`（live open / 历史无 open）、`updatePsCount`、`appendThinking`（feed 内 .process-thinking 累积）、`appendTool`（.process-tool-row 横向滚动胶囊）、`appendStatusRow`（.ps-start/.ps-complete/.ps-error）、`finishTurn(m, reason)`（complete→「回复完成」行；error/aborted/blocked/interrupted→「已停止 + reason」行；最后 removeAttribute("open") 收折）。
+- turn-start → setBusy(true) + start 行「开始处理这条消息」；turn-end → 收束 + 收折 + notice。applyStep/renderSegment 双路径同步重写（历史渲染 batched → 折叠态；SSE live → 展开态）。`s._hist` 标志控制 applyStep 历史路径展开与否。
+- 动画：.process-thinking/.ps-start/.ps-complete/.ps-error 加 pillIn。
+- **附带修复真实 bug**：`openChat` 未重置 `busy` → 切换会话后 send() 因 busy=true 直接 return（连本地 user 消息都不渲染）→ openChat 加 `setBusy(false)`。
+
+**真机验证（华为 nova7se CDY-AN00，v1.3.1 APK）全绿**：safe 36/40px ✓ topbar 66px/thread 596px ✓ 键盘 shift=278px ✓ 历史 37/98 轮全部折叠 details ✓ 计数徽标动态 ✓ live 展开（思考 335 段累积中 lastOpen=true）✓ turn-end 收折 + ps-complete ✓ 新会话发送正常（busy 修复）✓。
+
 

@@ -16,4 +16,4 @@ tmp-*
 *.log
 
 # 根下 zip（交付包以 artifacts/DSH-Mini-M1.2.0.zip 为准）
-/DSH-Mini-M1.2.0.zip
+/DSH-Mini-*.zip
