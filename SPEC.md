@@ -561,4 +561,33 @@ data: {"status":"complete"}
 
 **真机验证（华为 nova7se CDY-AN00，v1.3.1 APK）全绿**：safe 36/40px ✓ topbar 66px/thread 596px ✓ 键盘 shift=278px ✓ 历史 37/98 轮全部折叠 details ✓ 计数徽标动态 ✓ live 展开（思考 335 段累积中 lastOpen=true）✓ turn-end 收折 + ps-complete ✓ 新会话发送正常（busy 修复）✓。
 
+## 18. 手机页 v2：GUI 同款深色视觉重构（2026-08-16，SPEC v0.7）
+
+### 18.1 决策（用户确认）
+- 用户原话：「我有个想法，如果直接用DSH的GUI，手机端打开是否可行？」→ 三问确认 path=自定义「将DSH-mini改成官方GUI页面，走dsh-mini网关带token」；scope=[聊天核心, 模型切换, 工作区切换, 附件, 余额]；visual=GUI 同款深色玻璃。
+- **最终定案（用户定向澄清）**：「就是与官方GUI的独立手机页，不受官方影响」→ 独立手机页 v2，复刻官方 GUI 视觉与核心功能子集，走 dsh-mini 网关+token，官方升级不影响。
+- 调研（SPEC-GUI-mobile.md 第 1-6 节，源码级）：GUI 无媒体查询（三栏 grid + concession 链）、LAN 无鉴权、WebView 同源 SSE/RPC 可用 → 方案 C（官方响应式改造）不可维护，取独立实现。
+
+### 18.2 官方设计 token 提取（dsh-client-ui-theme/lib/styles/design-platform.css 深色主题 + base.css）
+- 手机页 `:root` 直接注入官方 token 深色子集（--dsw-bg-base=rgb(21,21,23) bluish-950、--dsw-bg-layer-1..3=875/850/800(35,35,36/44,44,46/53,54,56)、--dsw-specific-bubble=850(44,44,46)、--dsw-specific-input-major=850、--dsw-specific-menu=800、--dsw-specific-sidebar=bluish-900(27,27,28)、--dsw-border-l1..l4=white 6/12/16/20%、--dsw-label-primary/secondary/tertiary/caption=bluish-50/300/400/600、--dsw-button-info-fill/hover=deepseek-400(103,158,254)/500(65,118,230)、--dsw-state-success=green-500(34,197,94)、--dsw-state-error=red-400(242,90,90)、--dsw-amber-400(247,173,49)、--dsw-markdown-code-block=900/inline=850、--dsw-font-family 官方栈、--dsw-ease=cubic-bezier(.4,0,.2,1) Material、--dsw-dur .2s）。
+- 功能变量别名保留原名（--bg/--text/--muted/--faint/--panel/--user/--accent/--ok/--blue/--glass-border 等 → 指向官方 token），**HTML/JS 零改动**。
+
+### 18.3 组件对齐清单（public/index.html）
+- body：渐变深蓝灰 + 三光斑层 → **纯色 bg-base rgb(21,21,23)**（删除 body::before）。
+- topbar：半透明蓝+blur → **sidebar-fill rgb(27,27,28) 实心** + border-l2。
+- 用户气泡：蓝渐变+玻璃 → **specific-bubble rgb(44,44,46) 实心 + 22px 圆角 + border-l2-thin**（对齐官方 gdEzaW_bubble：官方=实心深灰+22px 圆角+padding 10px 16px，非渐变）。
+- composer 卡：半透明+blur → **input-major rgb(44,44,46) + 22px 圆角 + border-l2-thin**（对齐官方 uV2eYG_card）。
+- 发送钮：白底黑字 → **deepseek-400 蓝底白字**，:active 变 deepseek-500。
+- 三个菜单（thread/model/ws）：半透明+blur → **specific-menu rgb(53,54,56) 实心 + 18px 圆角 + border-l2**。
+- markdown：pre→code-block(27,27,28)、inline code→850、blockquote/table 边框→border-l2、链接→deepseek-300、表头→layer-3。
+- 折叠 details.process / 工具胶囊 / 附件胶囊 / ws-row / effort-chip / model-row.sel / scrim：全部 rgba 硬编码 → 官方 token。
+- 动画：所有 cubic-bezier(.22,.61,.36,1) → **官方 Material easing var(--dsw-ease)**，时长对齐 .2s/.28s。
+- 字体：官方栈（-apple-system,…PingFang SC…）；textarea 16px/1.4 官方 font-family。
+- manifest 主题/背景色 #0b0e15 → #151517（同步顶部 meta theme-color）。
+
+### 18.4 验证
+- 本地 _verify-html.cjs：JS 语法 OK、CSS 括号平衡、var() 引用完整性（used 全定义）。
+- 真机 CDP（华为 nova7se，PID 转发 9222）：body=rgb(21,21,23) ✓ topbar=rgb(27,27,28) ✓ composer=rgb(44,44,46) ✓ send=rgb(103,158,254) ✓ font=官方栈 ✓ 用户气泡=rgb(44,44,46)+22px+border rgba(255,255,255,.06) ✓。
+- 功能回归（CDP/SSE）：线程/发送/SSE/模型菜单沿用原 JS 未动，风险面仅视觉层。
+
 
