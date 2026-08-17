@@ -3,14 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content" />
-  <meta name="theme-color" content="#000000" />
-  <meta name="application-name" content="DSH Mini" />
-  <meta name="apple-mobile-web-app-title" content="DSH Mini" />
+  <meta name="theme-color" content="#0b0e15" />
+  <meta name="application-name" content="DSH-Mobile" />
+  <meta name="apple-mobile-web-app-title" content="DSH-Mobile" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <title>DSH Mini</title>
+  <link rel="icon" href="icon-192.png" type="image/png" />
+  <title>DSH-Mobile</title>
   <style>
     :root {
       color-scheme: dark;
@@ -30,7 +31,7 @@
       --ok: #8ef0b7;
       --blue: #5eb4ff;
       --dsh-safe-top: 0px;
-      --app-height: 100dvh;
+      --app-height: 100vh;
       --app-top: 0px;
       --keyboard-shift: 0px;
       --composer-bottom-pad: max(56px, calc(env(safe-area-inset-bottom) + 30px));
@@ -57,7 +58,9 @@
       background-attachment: fixed;
     }
     .app {
-      position: fixed; left: 0; right: 0; top: var(--app-top); width: 100%; height: var(--app-height);
+      position: fixed; left: 0; right: 0; top: var(--app-top); width: 100%;
+      height: 100vh;
+      height: 100dvh;
       display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: transparent; z-index: 1;
     }
     .topbar {
@@ -123,17 +126,21 @@
     body.dot-orange .context-ring::after { background: #ffb04d; box-shadow: 0 0 8px #ffb04d; }
     .thread-menu-scrim {
       position: fixed; left: 0; right: 0; top: calc(max(0px, calc(max(env(safe-area-inset-top), var(--dsh-safe-top)) - var(--topbar-safe-lift))) + var(--topbar-row-height));
-      bottom: 0; z-index: 19; display: none; background: rgba(0,0,0,.45);
+      bottom: 0; z-index: 19; background: rgba(0,0,0,.45); opacity: 0; visibility: hidden;
+      transition: opacity .28s ease, visibility 0s .28s;
     }
-    body:has(.thread-menu.is-open) .thread-menu-scrim { display: block; }
+    body:has(.thread-menu.is-open) .thread-menu-scrim { opacity: 1; visibility: visible; transition-delay: 0s; }
     .thread-menu {
       position: fixed; left: 12px; top: calc(max(0px, calc(max(env(safe-area-inset-top), var(--dsh-safe-top)) - var(--topbar-safe-lift))) + var(--topbar-row-height) + 8px);
-      z-index: 20; display: none; width: min(520px, calc(100vw - 24px)); padding: 8px;
+      z-index: 20; width: min(520px, calc(100vw - 24px)); padding: 8px;
       border: 1px solid var(--glass-border); border-radius: 22px; background: rgba(26,30,42,.66);
       box-shadow: 0 18px 60px rgba(0,0,0,.5), var(--glass-highlight); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+      max-height: min(74vh, 640px);
       max-height: min(74svh, 640px); overflow: auto; scrollbar-width: none; -ms-overflow-style: none;
+      opacity: 0; visibility: hidden; transform: translateY(-12px) scale(.98);
+      transition: opacity .24s ease, transform .3s cubic-bezier(.22,.61,.36,1), visibility 0s .3s;
     }
-    .thread-menu.is-open { display: block; }
+    .thread-menu.is-open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
     .thread-menu::-webkit-scrollbar { width: 0; height: 0; display: none; }
     .thread-section + .thread-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.07); }
     .thread-section-label { padding: 4px 10px 6px; color: var(--faint); font-size: 11px; font-weight: 720; letter-spacing: .04em; }
@@ -225,14 +232,6 @@
       touch-action: auto; overscroll-behavior: contain; -webkit-user-select: text; user-select: text;
     }
     textarea::placeholder { color: var(--faint); }
-    .composer-signature {
-      position: absolute; left: 50%; top: var(--composer-signature-top); z-index: 1; pointer-events: none;
-      white-space: nowrap; font-family: "Snell Roundhand", "Bradley Hand", "Apple Chancery", "Segoe Script", cursive;
-      font-size: clamp(15px, 3.4vw, 19px); font-weight: 650; line-height: 1.35; letter-spacing: .05em;
-      color: transparent; -webkit-text-fill-color: transparent; transform: translateX(-50%) scaleX(1.1);
-      background: linear-gradient(92deg, rgba(255,255,255,.42), rgba(158,203,255,.92) 30%, rgba(142,240,183,.82) 62%, rgba(255,255,255,.45));
-      -webkit-background-clip: text; background-clip: text; opacity: .9;
-    }
     .markdown-body > *:first-child { margin-top: 0; }
     .markdown-body > *:last-child { margin-bottom: 0; }
     .markdown-body p { margin: 0 0 .45em; }
@@ -289,12 +288,15 @@
     .bubble .attach-note span { padding: 2px 8px; border: 1px solid rgba(255,255,255,.10); border-radius: 999px; background: rgba(255,255,255,.05); }
     .model-menu {
       position: fixed; right: 12px; top: calc(max(0px, calc(max(env(safe-area-inset-top), var(--dsh-safe-top)) - var(--topbar-safe-lift))) + var(--topbar-row-height) + 8px);
-      z-index: 30; display: none; width: min(440px, calc(100vw - 24px)); padding: 8px;
+      z-index: 30; width: min(440px, calc(100vw - 24px)); padding: 8px;
       border: 1px solid var(--glass-border); border-radius: 22px; background: rgba(26,30,42,.66);
       box-shadow: 0 18px 60px rgba(0,0,0,.5), var(--glass-highlight); backdrop-filter: blur(24px) saturate(160%); -webkit-backdrop-filter: blur(24px) saturate(160%);
+      max-height: min(74vh, 640px);
       max-height: min(74svh, 640px); overflow: auto; scrollbar-width: none; -ms-overflow-style: none;
+      opacity: 0; visibility: hidden; transform: translateY(-12px) scale(.98);
+      transition: opacity .24s ease, transform .3s cubic-bezier(.22,.61,.36,1), visibility 0s .3s;
     }
-    .model-menu.is-open { display: block; }
+    .model-menu.is-open { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; }
     .model-menu::-webkit-scrollbar { width: 0; height: 0; display: none; }
     .model-row { appearance: none; border: 0; width: 100%; font-family: inherit; border-radius: 12px; padding: 9px 10px; color: var(--text); background: transparent; text-align: left; cursor: pointer; }
     .model-row:hover, .model-row:active { background: rgba(255,255,255,.055); }
@@ -307,9 +309,20 @@
       color: var(--muted); font: inherit; font-size: 10.5px; font-weight: 700; padding: 2px 9px; cursor: pointer;
     }
     .effort-chip.sel { color: #ffd28a; border-color: rgba(255,210,138,.3); background: rgba(255,210,138,.1); }
-    .model-scrim { position: fixed; inset: 0; z-index: 29; display: none; background: rgba(0,0,0,.5); }
-    body:has(.model-menu.is-open) .model-scrim { display: block; }
+    .model-scrim { position: fixed; inset: 0; z-index: 29; background: rgba(0,0,0,.5); opacity: 0; visibility: hidden; transition: opacity .28s ease, visibility 0s .28s; }
+    body:has(.model-menu.is-open) .model-scrim { opacity: 1; visibility: visible; transition-delay: 0s; }
     .scan-btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+    /* ---- 流畅动画 ---- */
+    @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    @keyframes pillIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+    @keyframes breathe { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+    .message.msg-in { animation: msgIn .32s cubic-bezier(.22,.61,.36,1) both; }
+    .process-tool { animation: pillIn .24s ease both; }
+    .attach-chip { animation: pillIn .24s ease both; }
+    .composer, .thread-menu-btn, .chip, .icon-btn, .send-btn { transition: transform .18s ease, opacity .18s ease; }
+    .composer:active, .thread-menu-btn:active, .send-btn:active { transform: scale(.98); }
+    .day-note { transition: color .3s ease; }
+    .title-dot { animation: breathe 2.4s ease-in-out infinite; }
   </style>
 </head>
 <body>
@@ -344,7 +357,6 @@
         <textarea id="text" rows="1" autocomplete="off" autocapitalize="sentences" spellcheck="false" placeholder="发消息给 DSH…"></textarea>
         <button class="send-btn" id="send" type="submit" title="发送" aria-label="发送">↑</button>
       </form>
-      <div class="composer-signature" aria-hidden="true">DSH Mini · 手机遥控</div>
     </footer>
     <input class="file-input" id="scan-input" type="file" accept="image/*" capture="environment" style="display:none" />
   </div>
@@ -676,6 +688,7 @@
           inner.className = "process-thinking";
           wrap.appendChild(inner);
           curThinking.appendChild(wrap);
+          curThinking.classList.add("msg-in");
           thread.appendChild(curThinking);
         }
         curThinking.firstChild.firstChild.textContent += s.text;
@@ -696,6 +709,7 @@
           wrap.append(meta, bubble);
           curMsg._bubble = bubble;
           curMsg.appendChild(wrap);
+          curMsg.classList.add("msg-in");
           thread.appendChild(curMsg);
           if (curThinking) { curThinking.remove(); curThinking = null; }
         }
@@ -716,6 +730,7 @@
         bubble.textContent = s.text || "";
         wrap.append(meta, bubble);
         um.appendChild(wrap);
+        um.classList.add("msg-in");
         thread.appendChild(um);
         curMsg = null; curThinking = null;
         scrollDown();
@@ -735,6 +750,7 @@
           wrap.append(meta, bubble);
           curMsg._bubble = bubble;
           curMsg.appendChild(wrap);
+          curMsg.classList.add("msg-in");
           thread.appendChild(curMsg);
         }
         let row = curMsg._toolRow;
@@ -794,7 +810,7 @@
     } catch {}
   }
 
-  // ---------- 线程菜单 ----------
+  // ---------- 线程菜单（按工作区 cwd 分组） ----------
   function renderThreadMenu() {
     threadMenu.innerHTML = "";
     if (!threads.length) {
@@ -803,30 +819,51 @@
       empty.textContent = "还没有会话。点「＋」新建一个。";
       threadMenu.appendChild(empty);
     } else {
-      const section = document.createElement("section");
-      section.className = "thread-section";
-      const label = document.createElement("div");
-      label.className = "thread-section-label";
-      label.textContent = "会话（" + threads.length + "）";
-      section.appendChild(label);
-      const list = document.createElement("div");
+      // 工作区分组：cwd 取最后一段作标题，同名才回退完整路径；纯 hash 型 cwd 归并到「其他工作区」
+      const groups = new Map();
       for (const t of threads) {
-        const opt = document.createElement("button");
-        opt.type = "button";
-        opt.className = "thread-option";
-        if (t.id === currentId) opt.setAttribute("aria-current", "true");
-        const st = t.live
-          ? '<span class="thread-option-spinner" title="运行中"></span>'
-          : '<span class="thread-option-dot idle" title="空闲"></span>';
-        const tmodel = t.model ? (String(t.model.model).split("/").pop() + (t.model.reasoningEffort ? "·" + t.model.reasoningEffort : "")) : "";
-        opt.innerHTML = '<span class="thread-option-title"><span class="tname">' + esc(t.title || t.id) + "</span>" +
-          (tmodel ? '<span class="tmodel">' + esc(tmodel) + "</span>" : "") + "</span>" +
-          '<span class="thread-option-state">' + st + "</span>";
-        opt.onclick = () => { toggleMenu(false); openChat(t.id, t.title || t.id); };
-        list.appendChild(opt);
+        let key = (t.cwd || t.workspace || "").trim();
+        const base = String(key).split(/[\\/]/).filter(Boolean).pop() || "";
+        if (!key || /^[0-9a-f]{8,}$/i.test(base)) key = "(其他工作区)";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(t);
       }
-      section.appendChild(list);
-      threadMenu.appendChild(section);
+      const nameCount = new Map();
+      for (const k of groups.keys()) {
+        const base = String(k).split(/[\\/]/).filter(Boolean).pop() || k;
+        nameCount.set(base, (nameCount.get(base) || 0) + 1);
+      }
+      const keys = [...groups.keys()].sort((a, b) => a.localeCompare(b));
+      for (const key of keys) {
+        const list = groups.get(key);
+        const base = String(key).split(/[\\/]/).filter(Boolean).pop() || key;
+        const labelText = (nameCount.get(base) > 1 ? key : base) + "（" + list.length + "）";
+        const section = document.createElement("section");
+        section.className = "thread-section";
+        const label = document.createElement("div");
+        label.className = "thread-section-label";
+        label.textContent = labelText;
+        label.title = key;
+        section.appendChild(label);
+        const listDiv = document.createElement("div");
+        for (const t of list) {
+          const opt = document.createElement("button");
+          opt.type = "button";
+          opt.className = "thread-option";
+          if (t.id === currentId) opt.setAttribute("aria-current", "true");
+          const st = t.live
+            ? '<span class="thread-option-spinner" title="运行中"></span>'
+            : '<span class="thread-option-dot idle" title="空闲"></span>';
+          const tmodel = t.model ? (String(t.model.model).split("/").pop() + (t.model.reasoningEffort ? "·" + t.model.reasoningEffort : "")) : "";
+          opt.innerHTML = '<span class="thread-option-title"><span class="tname">' + esc(t.title || t.id) + "</span>" +
+            (tmodel ? '<span class="tmodel">' + esc(tmodel) + "</span>" : "") + "</span>" +
+            '<span class="thread-option-state">' + st + "</span>";
+          opt.onclick = () => { toggleMenu(false); openChat(t.id, t.title || t.id); };
+          listDiv.appendChild(opt);
+        }
+        section.appendChild(listDiv);
+        threadMenu.appendChild(section);
+      }
     }
     const setBtn = document.createElement("button");
     setBtn.type = "button";
@@ -952,6 +989,7 @@
     }
     wrap.append(meta, bubble);
     um.appendChild(wrap);
+    um.classList.add("msg-in");
     thread.appendChild(um);
     textareaEl.value = ""; textareaEl.style.height = "auto";
     curMsg = null; curThinking = null;

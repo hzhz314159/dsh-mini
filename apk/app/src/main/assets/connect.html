@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="theme-color" content="#0d0d0d" />
-<title>DSH Mini · 连接</title>
+<title>DSH-Mobile · 连接</title>
 <style>
   :root {
     color-scheme: dark;
@@ -31,10 +31,11 @@
   .glass { background:var(--glass); border:1px solid var(--glass-b);
     -webkit-backdrop-filter:blur(24px) saturate(160%); backdrop-filter:blur(24px) saturate(160%);
     box-shadow:0 12px 48px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.14); }
-  .logo { width:76px; height:76px; border-radius:22px; display:grid; place-items:center;
-    font-size:38px; background:linear-gradient(135deg,rgba(94,180,255,.35),rgba(255,255,255,.05));
+  .logo { width:76px; height:76px; border-radius:22px; display:grid; place-items:center; overflow:hidden;
+    background:linear-gradient(135deg,rgba(94,180,255,.35),rgba(255,255,255,.05));
     border:1px solid rgba(255,255,255,.16); box-shadow:0 8px 28px rgba(94,180,255,.22),
     inset 0 1px 0 rgba(255,255,255,.2); }
+  .logo img { width:100%; height:100%; object-fit:cover; }
   h1 { margin:0; font-size:21px; letter-spacing:-.02em; font-weight:700; }
   .sub { margin:0; color:var(--muted); font-size:13px; text-align:center; line-height:1.7; padding:0 10px; }
   .card { width:100%; max-width:400px; display:flex; flex-direction:column; gap:12px;
@@ -60,8 +61,8 @@
 <body>
   <div class="bg"></div>
   <div class="wrap">
-    <div class="logo">📱</div>
-    <h1>DSH Mini</h1>
+    <div class="logo"><img src="icon.png" alt="" /></div>
+    <h1>DSH-Mobile</h1>
     <p class="sub">在电脑的 DSH 里点左下角「手机连接」图标<br />用本应用扫桌面二维码，即可遥控电脑上的 AI 会话</p>
     <div class="card glass">
       <button class="btn" id="scan" type="button">📷 扫码连接</button>
