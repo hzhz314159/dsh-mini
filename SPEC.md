@@ -372,4 +372,45 @@ data: {"status":"complete"}
 - 手机可达性判定 = `lanEnabled && ctx.webServer.host === '0.0.0.0'`；127.0.0.1 绑定时设置卡/弹窗显示告警与指引。
 - 图片附件不落 DSH attachment 服务（无图片事件），走上传目录 + 绝对路径 + `view_image` 提示。
 
+## 15. v1.3.0 实现记录（第三阶段：液态玻璃 UI + 原生扫码 APK，SPEC v0.6）
+
+### 15.1 阶段决策（用户 2026-08-16 确认）
+
+- 第三阶段 = 本轮 UI 打磨（M3 重做）：液态玻璃 + 沉浸式 + 字体中文渲染；第四阶段 = 功能扩展（真实余额数据 · PWA · iPad 完善）；**不做 P4 中继**。
+- 扫码方案 = Native 实时相机 + 开源 ZXing（CameraX 预览 + zxing-core 解码，免 GMS，华为机可用）。connect.html 移除旧 jsQR 拍照选图。
+- 液态玻璃范围 = 仅 `public/index.html` 聊天界面（connect.html 保持玻璃风门面但不深化）。
+- webview-polish = 沉浸式状态栏/导航栏 + 字体与中文渲染优化。
+
+### 15.2 APK 重封装（`apk/`，version 1.3.0 / versionCode 5）
+
+- 新增 `ScanActivity.java`：CameraX `ProcessCameraProvider` 后置预览 + `ImageAnalysis`(1080x1920, KEEP_ONLY_LATEST) + zxing `QRCodeMultiReader` 解码；自绘取景框（暗角+圆角框+四角标+呼吸扫描线）；识别含 `/dsh-mini` 的 http(s) URL → 震动 + `setResult` 回主界面；`LifecycleOwner` 用 `LifecycleRegistry` 手工分发（Activity 非 AppCompatActivity 也能喂 CameraX）。
+  - 编译坑三连：①`QRCodeMultiReader` 无 `setHints()`（zxing 3.5.3）→ hints 直接传 `decodeMultiple(bitmap, hints)`；②`image.getPlanes()[0]` 返回 `ImageProxy.PlaneProxy` 而非 `android.media.Image.Plane`；③CameraX `bindToLifecycle` 需要 `LifecycleOwner`。
+- `MainActivity.java` 增强：沉浸式（透明状态栏/导航栏 + LAYOUT_FULLSCREEN + 去 LIGHT_STATUS_BAR）；`REQ_SCAN=4243` + `launchScanIfPermitted()` + 权限回调（拒绝对话 `__dshMiniScanCb(null,"NO_CAMERA_PERMISSION")`）；Bridge 新增 `startScan()` 与 **`getSafeTop()`**（读 `status_bar_height` 资源，供页面设 `--dsh-safe-top`）。
+- `themes.xml`：透明系统栏 + `windowDrawsSystemBarBackgrounds` + `windowLayoutInDisplayCutoutMode shortEdges`。
+- `connect.html` 重写：液态玻璃门面；「📷 扫码连接」→ `DshMiniBridge.startScan()`；`__dshMiniScanCb(url)` → `testThenConnect(parseTarget(url))`；无相机（模拟器/虚拟机）走地址输入 + lastUrl 回填 + `testUrl` 原生连通自检（file:// 页面 fetch 会被 CORS 拦，桥走 Java `HttpURLConnection`）。
+
+### 15.3 手机端 UI 液态玻璃（`public/index.html`，单文件，零 JS 改动）
+
+- 不整体重写（1094 行 JS 逻辑多），系统性替换 CSS 视觉基础：body 深色渐变 + `body::before` 固定径向光斑层（z-index 0，`.app` 升 z-index 1 透出光斑）；`--glass-border/--glass-highlight` 变量；`.topbar`(rgba .62 + blur 22px)、`.thread-menu`/`.model-menu`(rgba .66 + blur 24px saturate 160%)、`.composer`(rgba .6 + blur 20px)、`.message.user .bubble`（蓝渐变 rgba + blur 16px + 浅蓝描边）、`.markdown pre/table`、`.attach-chip`/`.process-tool` 半透明 + inset 高光；`thread-option[aria-current]`/`.model-row.sel` 白 10% 高光。
+- 字体渲染：`-webkit-font-smoothing: antialiased`、`-webkit-text-size-adjust: 100%`、font-family 增补 `Noto Sans SC`、全局 `letter-spacing .01em`。
+- 沉浸式安全区：Android WebView `env(safe-area-inset-top)` 恒 0 → `getSafeTop()` 桥 → 页面/连接页 JS 设 `--dsh-safe-top`，topbar height/padding、thread-menu、model-menu、设置卡 `top` 全部改 `max(env(safe-area-inset-top), var(--dsh-safe-top))`。
+
+### 15.4 本机工具链与仓库
+
+- 用户装 Android Studio 后本机可构建：JDK 21.0.12（Oracle）+ Gradle 8.9（腾讯镜像）+ SDK cmdline-tools 19 / platform-34 / build-tools 36；构建命令模板见 14.6 上文的 `gradle.bat --no-daemon :app:assembleDebug`。
+- 源码已推送 GitHub：`hzhz314159/dsh-mini`（public，main，单 commit `ae6bf6a` v1.2.0，66 files）。系统代理 127.0.0.1:7890（Clash）下 curl 超时、Invoke-WebRequest 走 WinINET 可用；git 配 http.proxy。
+
+### 15.5 真机验证（华为 nova7se CDY-AN00，Android 10，2026-08-16）
+
+- USB adb 安装 `app-debug.apk` 成功；WebView 调试经 `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` + `scripts/cdp-eval.cjs`（Node 原生 WebSocket + CDP `Runtime.evaluate returnByValue awaitPromise`）执行 JS。
+- CDP 实测全绿：页面自动续连 last_url（`http://192.168.2.3:46322/dsh-mini/?token=…`，install -r 保留 prefs）；`--dsh-safe-top = 108px`（桥生效）；body 渐变 + 光斑层、topbar rgba(18,22,33,.62)+blur(22px) 高 140px、composer rgba(28,33,46,.6)+blur(20px)、user bubble 蓝渐变+blur(16px)+浅蓝描边——全部 computed 样式符合预期。
+- `ScanActivity` 为 `exported=false`（仅应用内 `startActivityForResult` 启动），shell 直启被系统 SecurityException 拒绝属预期安全行为；扫码实测需用户真机操作（相机权限弹窗）。
+- 构建迭代 5 次全绿（`BUILD SUCCESSFUL`），产物 `apk/app/build/outputs/apk/debug/app-debug.apk`。
+
+### 15.6 待用户复测项（第三阶段）
+
+1. 真机「扫码连接」：相机权限授权弹窗 → CameraX 实时扫码 → 自动进手机端页。
+2. 真机沉浸式观感：状态栏/导航栏透明、刘海避开、液态玻璃视觉效果。
+3. 虚拟机/模拟器调试（无相机）：地址输入 + `testUrl` 自检 → 连接（见 `apk/README-APK.md`「虚拟机调试」）。
+
 

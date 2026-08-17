@@ -30,5 +30,10 @@
                 <data android:scheme="https" android:pathPrefix="/dsh-mini" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ScanActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
+            android:screenOrientation="portrait" />
     </application>
 </manifest>

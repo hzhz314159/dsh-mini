@@ -2,18 +2,19 @@
 // 
 // 职责：
 //   1) 记住上次连接地址（SharedPreferences），有则直接加载手机端页面；
-//   2) 无连接地址时加载内置 connect.html（assets），其内含「拍照扫码 + jsQR
-//      解码 + 手动输入」连接流程——扫码完全在 Web 层完成，Android 侧零相机代码；
-//   3) onShowFileChooser 透传系统相机/相册（connect.html 与手机端页面里的
-//      <input type="file" capture> 都靠它弹出系统相机）；
+//   2) 无连接地址时加载内置 connect.html（assets），「📷 扫码连接」按钮触发
+//      Native ScanActivity（CameraX 实时取景 + zxing 解码），识别后回调 JS；
+//      连接页保留地址输入兜底（虚拟机/无相机场景）；
+//   3) onShowFileChooser 透传系统相机/相册（手机端页面拍照附件靠它弹出系统相机）；
 //   4) 系统相机扫桌面二维码（http + pathPrefix=/dsh-mini）可直启本应用；
-//   5) 保持亮屏 + 返回键导航 + 全屏沉浸。
+//   5) 沉浸式状态栏/导航栏透明 + 浅色图标 + 亮屏 + 返回键回退。
 package com.dshmini.app;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -34,6 +35,8 @@ public class MainActivity extends Activity {
     private static final String PREFS = "dshmini";
     private static final String KEY_URL = "last_url";
     private static final int REQ_FILE = 4242;
+    private static final int REQ_SCAN = 4243;
+    private boolean scanPending = false;
 
     private WebView web;
     private ValueCallback<Uri[]> filePathCallback;
@@ -46,7 +49,17 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
             WebView.setWebContentsDebuggingEnabled(true);
         }
+        // 沉浸式：透明状态栏/导航栏，内容延伸至边缘
+        getWindow().setStatusBarColor(android.graphics.Color.TRANSPARENT);
+        getWindow().setNavigationBarColor(android.graphics.Color.TRANSPARENT);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        View decor = getWindow().getDecorView();
+        int vis = decor.getSystemUiVisibility();
+        vis |= View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+        // 深色背景下用浅色状态栏图标（关掉浅色图标 = 默认浅）
+        vis &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+        decor.setSystemUiVisibility(vis);
 
         web = new WebView(this);
         web.setBackgroundColor(0xFF0D0D0D);
@@ -131,6 +144,24 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_SCAN) {
+            if (resultCode == RESULT_OK && data != null) {
+                final String url = data.getStringExtra(ScanActivity.EXTRA_URL);
+                if (url != null && !url.isEmpty()) {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                String safe = url.replace("\\", "\\\\").replace("\"", "'");
+                                web.evaluateJavascript(
+                                    "window.__dshMiniScanCb && window.__dshMiniScanCb(\"" + safe + "\")", null);
+                            } catch (Exception ignored) {}
+                        }
+                    });
+                }
+            }
+            return;
+        }
         if (requestCode != REQ_FILE) return;
         if (filePathCallback == null) return;
         Uri[] results = null;
@@ -145,6 +176,38 @@ public class MainActivity extends Activity {
         }
         filePathCallback.onReceiveValue(results);
         filePathCallback = null;
+    }
+
+    private void launchScanIfPermitted() {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED) {
+            scanPending = false;
+            try {
+                startActivityForResult(new Intent(this, ScanActivity.class), REQ_SCAN);
+            } catch (Exception ignored) {}
+        } else {
+            scanPending = true;
+            requestPermissions(new String[]{android.Manifest.permission.CAMERA}, REQ_SCAN);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(requestCode, perms, res);
+        if (requestCode == REQ_SCAN && scanPending) {
+            scanPending = false;
+            if (res.length > 0 && res[0] == PackageManager.PERMISSION_GRANTED) {
+                try { startActivityForResult(new Intent(this, ScanActivity.class), REQ_SCAN); } catch (Exception ignored) {}
+            } else {
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        try { web.evaluateJavascript(
+                            "window.__dshMiniScanCb && window.__dshMiniScanCb(null,\"NO_CAMERA_PERMISSION\")", null);
+                        } catch (Exception ignored) {}
+                    }
+                });
+            }
+        }
     }
 
     @Override
@@ -189,6 +252,29 @@ public class MainActivity extends Activity {
         @android.webkit.JavascriptInterface
         public String getLastUrl() {
             return getSharedPreferences(PREFS, MODE_PRIVATE).getString(KEY_URL, "");
+        }
+
+        // 状态栏高度 px（沉浸式安全区）：Android WebView 中 env(safe-area-inset-top) 恒为 0，
+        // 由页面 JS 用此值设置 --dsh-safe-top，topbar/菜单才能避开刘海与状态栏。
+        @android.webkit.JavascriptInterface
+        public int getSafeTop() {
+            int res = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            if (res > 0) {
+                try { return getResources().getDimensionPixelSize(res); } catch (Exception e) { /* fallthrough */ }
+            }
+            return 0;
+        }
+
+        // 启动 Native 实时扫码（CameraX + zxing）。识别结果回调
+        // window.__dshMiniScanCb(url) 或 (null, "NO_CAMERA_PERMISSION")。
+        @android.webkit.JavascriptInterface
+        public void startScan() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    launchScanIfPermitted();
+                }
+            });
         }
 
         // 原生侧连通自检：connect.html 是 file:// 页面，fetch 会被 CORS 拦截，
