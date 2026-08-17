@@ -1,0 +1,11 @@
+﻿const path = require("node:path");
+const fs = require("node:fs");
+const pkgPath = "E:/DSH Zone/dsh-mini/package.json";
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+console.log("type =", pkg.type || "(none)");
+const vendorPath = "E:/DSH Zone/dsh-mini/vendor/qrcode.js";
+const src = fs.readFileSync(vendorPath, "utf8");
+const m = { exports: {} };
+const fn = new Function("module", "exports", "require", src);
+fn(m, m.exports, require);
+console.log("after raw eval: typeof m.exports =", typeof m.exports, "keys =", Object.keys(m.exports));

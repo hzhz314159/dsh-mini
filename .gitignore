@@ -1,0 +1,19 @@
+# 依赖与本地环境
+node_modules/
+apk/local.properties
+
+# 构建中间产物（构建产物单独放 artifacts/）
+apk/app/build/
+apk/.gradle/
+apk/build/
+
+# 调试/诊断残留
+vm-shots/
+diag-*
+tmp-*
+.edge-diag/
+.restore/
+*.log
+
+# 根下 zip（交付包以 artifacts/DSH-Mini-M1.2.0.zip 为准）
+/DSH-Mini-M1.2.0.zip

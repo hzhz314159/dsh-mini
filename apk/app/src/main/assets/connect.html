@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#000000" />
+<title>DSH Mini · 连接</title>
+<style>
+  :root { color-scheme: dark; --bg:#0d0d0d; --panel:#171717; --text:#f4f4f5; --muted:#a1a1aa; --faint:#71717a; --line:rgba(255,255,255,.09); --ok:#8ef0b7; --blue:#5eb4ff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family: ui-sans-serif,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  .wrap { min-height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:32px 24px calc(32px + env(safe-area-inset-bottom)); }
+  .logo { width:84px; height:84px; border-radius:24px; background:linear-gradient(135deg,#1e3a5f,#123); display:grid; place-items:center; font-size:40px; box-shadow:0 8px 40px rgba(94,180,255,.25); }
+  h1 { margin:0; font-size:22px; letter-spacing:-.02em; }
+  .sub { margin:0; color:var(--muted); font-size:13px; text-align:center; line-height:1.6; }
+  .card { width:100%; max-width:420px; display:flex; flex-direction:column; gap:10px; padding:14px; border:1px solid var(--line); border-radius:20px; background:var(--panel); }
+  .btn { appearance:none; border:0; border-radius:14px; padding:14px; font:inherit; font-size:15px; font-weight:700; cursor:pointer; color:#111; background:var(--ok); }
+  .btn:active { transform:scale(.98); }
+  .btn.ghost { color:var(--text); background:rgba(255,255,255,.07); }
+  .row { display:flex; gap:8px; }
+  .row input { flex:1; min-width:0; border:1px solid var(--line); border-radius:12px; padding:12px; background:rgba(0,0,0,.35); color:var(--text); font:inherit; font-size:14px; outline:none; }
+  .row input:focus { border-color:var(--blue); }
+  #status { color:var(--faint); font-size:12px; min-height:16px; text-align:center; }
+  #status.ok { color:var(--ok); }
+  #status.err { color:#ff8f8f; }
+  .hint { color:var(--faint); font-size:12px; }
+  input[type=file] { display:none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">📱</div>
+    <h1>DSH Mini</h1>
+    <p class="sub">在电脑的 DSH 里点左下角「手机连接」图标<br />用本应用扫描桌面二维码，即可遥控电脑上的 AI 会话<br /><span class="hint">提示：真机用「扫码连接」；模拟器/虚拟机无相机时请直接输入链接。</span></p>
+    <div class="card">
+      <button class="btn" id="scan" type="button">📷 扫码连接</button>
+      <div class="row">
+        <input id="url" type="url" inputmode="url" placeholder="或输入连接链接 http://IP:端口/dsh-mini/?token=…" />
+        <button class="btn ghost" id="go" type="button">连接</button>
+      </div>
+    </div>
+    <div id="status"></div>
+  </div>
+  <input type="file" id="cam" accept="image/*" capture="environment" />
+  <script src="jsQR.min.js"></script>
+  <script>
+  "use strict";
+  var statusEl = document.getElementById("status");
+  function say(msg, cls) {
+    statusEl.textContent = msg;
+    statusEl.className = cls || "";
+  }
+  function parseTarget(text) {
+    var t = String(text || "").trim();
+    var u = null;
+    try { u = new URL(t); } catch (e) { return null; }
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    var base = u.origin + "/dsh-mini/";
+    var token = u.searchParams.get("token");
+    return base + (token ? "?token=" + encodeURIComponent(token) : "");
+  }
+  function connect(url) {
+    if (!url) { say("未识别到有效链接", "err"); return; }
+    say("连接 " + (url.length > 60 ? url.slice(0, 60) + "…" : url) + " …");
+    try { if (window.DshMiniBridge) window.DshMiniBridge.connect(url); return; }
+    catch (e) { /* fall through */ }
+    location.href = url;
+  }
+  // 原生侧连通自检（file:// 页面 fetch 会被 CORS 拦，桥走 Java HttpURLConnection）
+  function testThenConnect(fullUrl, rawText) {
+    if (!fullUrl) { say("未识别到有效链接", "err"); return; }
+    say(rawText ? "校验 " + rawText + " …" : "校验连接 …");
+    document.getElementById("go").disabled = true;
+    window.__dshMiniTestCb = function (ok, code, err) {
+      document.getElementById("go").disabled = false;
+      if (ok) {
+        say("连通 ✓ 正在打开手机端…", "ok");
+        setTimeout(function () { connect(fullUrl); }, 200);
+      } else {
+        var msg = "无法访问（HTTP " + (code || "连接失败") + "）——请检查：电脑 DSH 网关已开启(0.0.0.0)、手机/虚拟机与电脑同一网络、IP 是否正确、防火墙是否放行端口 46322";
+        if (err) msg += " · " + err;
+        say(msg, "err");
+      }
+    };
+    try {
+      if (window.DshMiniBridge && window.DshMiniBridge.testUrl) {
+        window.DshMiniBridge.testUrl(fullUrl);
+        return;
+      }
+    } catch (e) { /* fall through */ }
+    connect(fullUrl);
+  }
+  var urlInput = document.getElementById("url");
+  // 回填上次成功连接的地址（虚拟机/换网后无需重输）
+  try {
+    var last = window.DshMiniBridge && window.DshMiniBridge.getLastUrl ? window.DshMiniBridge.getLastUrl() : "";
+    if (last) { urlInput.value = last; say("已回填上次连接地址，直接点「连接」即可", "ok"); }
+  } catch (e) { /* ignore */ }
+  document.getElementById("scan").onclick = function () { document.getElementById("cam").click(); };
+  document.getElementById("go").onclick = function () { testThenConnect(parseTarget(urlInput.value), urlInput.value); };
+  urlInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") testThenConnect(parseTarget(e.target.value), e.target.value);
+  });
+  document.getElementById("cam").onchange = function () {
+    var f = this.files && this.files[0];
+    this.value = "";
+    if (!f) return;
+    say("识别二维码…");
+    try {
+      createImageBitmap(f).then(function (bmp) {
+        var W = Math.min(bmp.width, 1400);
+        var scale = W / bmp.width;
+        var canvas = document.createElement("canvas");
+        canvas.width = W;
+        canvas.height = Math.max(1, Math.round(bmp.height * scale));
+        var ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+        var data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var code = (typeof jsQR === "function") ? jsQR(data.data, canvas.width, canvas.height) : null;
+        if (!code || !code.data) { say("未识别到二维码，请对准桌面二维码重拍", "err"); return; }
+        var target = parseTarget(code.data);
+        if (!target) { say("二维码内容不是有效的 DSH Mini 链接", "err"); return; }
+        testThenConnect(target, code.data);
+      }).catch(function (e) {
+        say("扫码失败：" + (e && e.message ? e.message : e));
+      });
+    } catch (e) {
+      say("扫码失败：" + (e && e.message ? e.message : e));
+    }
+  };
+  </script>
+</body>
+</html>

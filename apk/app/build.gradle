@@ -1,0 +1,31 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.dshmini.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.dshmini.app"
+        minSdk 24
+        targetSdk 34
+        versionCode 4
+        versionName "1.2.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug // 调试签名即可安装；正式分发可替换为自己的 keystore
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    // 零第三方依赖：MainActivity 用平台 Activity + 原生 Material 主题，
+    // 无需 appcompat（其依赖链会带入 kotlin-stdlib 旧版引起 Duplicate class）
+}

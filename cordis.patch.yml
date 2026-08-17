@@ -1,0 +1,6 @@
+# dsh-mini profile composition patch.
+# Kept as a flat list of entries (never mix a top-level `[]` with list items).
+- insert:
+    - id: dsh-mini
+      name: '@deepseek-ai/dsh-mini'
+      config: {}
