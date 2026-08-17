@@ -4,7 +4,7 @@
 
 所有会话都是**电脑端 DSH 里的真实 agent 会话**——手机只是其中一个远程参与方，电脑桌面与手机双向可见、双向可控。
 
-> 技术文档与决策记录见 [`SPEC.md`](./SPEC.md)（第 14 节为 1.2.0 实现记录）。本文件只讲用法。
+> 技术文档与决策记录见 [`SPEC.md`](./SPEC.md)（第 14 节为 1.2.0 实现记录、第 15 节为 1.3.0 实现记录）。本文件只讲用法。
 
 ## 一、开发机热装配（注入器工作流，改代码即时生效）
 
@@ -31,14 +31,14 @@ pwsh scripts/install.ps1 -Target "C:\Program Files\DSH Desktop\resources\app"
 脚本会：① 复制插件到 `assets/plugins/dsh-mini`；② 同步到 `~/.dsh/profiles/web/node_modules/@deepseek-ai/dsh-mini`；③ 向 `cordis.patch.yml` 追加 `insert` 块。装完重启 DSH Desktop。启动日志：
 
 ```
-[dsh-mini] v1.2.0 mounted at /dsh-mini/ (api: /dsh-mini/api/)
+[dsh-mini] v1.3.0 mounted at /dsh-mini/ (api: /dsh-mini/api/)
 [dsh-mini] webServer bind: 127.0.0.1:46321; LAN gateway disabled; ...
 [dsh-mini] bridge token (share with the phone app): <token>
 ```
 
-## 三、开启局域网网关 + 手机连接（1.2.0 新流程）
+## 三、开启局域网网关 + 手机连接（1.3.0 流程）
 
-1. **打开网关**：DSH 桌面 → 设置 → 「DSH Mini 手机桥」→ 开启「局域网网关」。
+1. **打开网关**：DSH 桌面 → 设置 → 「DSH Mini 手机桥」→ 开启「局域网网关」（可改网关端口 1024–65535）。
 2. **确认绑定**：设置卡里实时显示绑定地址与端口。手机可达要求 DSH web 以 `--host 0.0.0.0` 启动（绑 `127.0.0.1` 时会显示黄色告警与指引）。
 3. **弹二维码**：点左侧栏左下角「手机连接」图标（在「临时会话」上方）→ 弹出二维码。**网关未开启时点击会自动跳转设置页**。
 4. **手机扫码**：
@@ -49,7 +49,7 @@ pwsh scripts/install.ps1 -Target "C:\Program Files\DSH Desktop\resources\app"
 
 > 说明：余额徽章数据来自 Desktop 壳（`dsh-balance` 无 host API）——桌面端开着 DSH 即会经 client 半边推送；未推送时显示「余额待同步」。
 
-## 四、API 速览（1.2.0）
+## 四、API 速览（1.3.0）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
@@ -101,6 +101,7 @@ pwsh scripts/smoke.ps1        # 自动探测端口；日志 smoke.txt / smoke_st
 
 ## 变更记录
 
+- **1.3.0**（2026-08-16）：第三阶段 UI 打磨。手机端 UI 全面液态玻璃化（深色渐变 + 光斑层 + 半透明毛玻璃 topbar/菜单/composer/用户气泡/代码块/表格 + 高光描边）；沉浸式安全区（APK `getSafeTop()` 桥 → 页面 `--dsh-safe-top`，避开刘海/状态栏/导航栏，connect.html 同步）；字体与中文渲染优化（antialiased / text-size-adjust / Noto Sans SC）。APK 重封装：**Native 实时扫码**（CameraX 后置预览 + ZXing 解码，`ScanActivity`，免 GMS 华为机可用）、透明系统栏主题、connect.html 玻璃门面（「📷 扫码连接」→ 原生相机 / 无相机模拟器走地址输入 + lastUrl 回填 + 原生连通自检）；本机 Android 构建工具链落地（JDK 21 + Gradle 8.9 + SDK）；真机（华为 nova7se）CDP 实测玻璃样式与沉浸式全绿；SPEC 第 15 节记录。第四阶段（功能扩展）见 SPEC。
 - **1.2.0**（2026-08-16）：M2 + M3。运行时兼容修复（标题/模型改 zstd 日志折叠、live 历史双源去重、turn/end reason 全集、路由热重载自愈）；附件上传+路径引用（图片提示 `view_image`）；模型目录 + 按会话切换（installModelSelection 可变 selection + sessions.json 持久化）；`/attach` 接管；桌面 client 半边（侧栏手机图标→二维码/未配置跳设置页 + 设置分节网关卡 + 余额转发）；手机 UI（附件胶囊/模型菜单/推理档/余额徽章/扫码连接）；网关 API（config.json + token 重置）；APK 壳工程（含应用内扫码，源码 + CI 交付）。
 - **1.1.0**（2026-08-16）：手机端 UI 全面重制为 GPT Mini（Codex-Mini v5.5.4）同款液态玻璃风格——顶栏状态呼吸点 + 状态圆环 + 线程下拉菜单（live spinner/模型徽章）+ 保持亮屏（Wake Lock）+ 线路徽章（本地/远程）+ markdown 渲染 + 工具胶囊 + 键盘适配 + iPad 双栏布局 + PWA（manifest/图标）；修复 `/threads/new` 的 `commit is not a function`（setup 回调返回清理函数与 agent-loop `.commit()` 契约冲突，改为不返回值）；`GET /threads/:id/model` 返回当前模型信息；history 补充 `reasoningEffort`；扫码 URL `?token=` 自动保存。
 - **1.0.0**（2026-08-16）：初版（M1 闭环：线程列表 / 新建 / 发文字 / 双向 SSE / 停止）。
