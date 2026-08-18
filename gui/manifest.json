@@ -1,5 +1,5 @@
 {
-  "rev": "d0c6b5ce66b5",
+  "rev": "4bea25cbaf6a",
   "entries": [
     {
       "id": "@deepseek-ai/dsh-typert-registry",
@@ -46,8 +46,8 @@
     },
     {
       "id": "@deepseek-ai/dsh-client-connection",
-      "url": "/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=fdd41b0168e3",
-      "rev": "fdd41b0168e3",
+      "url": "/plugins/@deepseek-ai/dsh-client-connection/client.js?rev=36d58d209c00",
+      "rev": "36d58d209c00",
       "inject": [],
       "immediately": true
     },
