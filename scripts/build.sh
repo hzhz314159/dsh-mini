@@ -23,5 +23,10 @@ for f in public/index.html public/manifest.webmanifest public/icon-192.png publi
   [ -f "$f" ] || { echo "missing asset: $f" >&2; exit 1; }
 done
 
+echo "[dsh-mini build] checking gui assets (must ship in the package)..."
+for f in gui/dist/index.html gui/manifest.json gui/bundles; do
+  [ -e "$f" ] || { echo "missing gui asset: $f — add 'gui' to package.json files, re-copy the gui/ snapshot, then rebuild/pack" >&2; exit 1; }
+done
+
 echo "[dsh-mini build] version: $(node -p "require('./package.json').version")"
 echo "[dsh-mini build] OK"

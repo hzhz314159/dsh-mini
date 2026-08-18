@@ -2,8 +2,14 @@
   [int]$Port = 0,
   [string]$Text = "用一句话介绍你自己"
 )
-# DSH Mini loopback smoke test (v1.2.0). Auto-discovers the webServer port if -Port is 0.
-# Covers: health / gateway / models / upload / threads(new|list|send|stream|history|model|attach) / balance.
+# DSH Mini loopback smoke test (v1.4.0 gateway RPC surface).
+# Auto-discovers the webServer port if -Port is 0.
+# Covers: main-port health / gateway status / balance, and LAN gateway
+#   root (v3 GUI) + GUI RPC methods (host.describe, session.list, llm.*,
+#   workspace.*, agentPreset.*, skill.*, settings.describe, goals/*).
+# Requirement: publicMode must be OFF (LAN baseline). The publicMode positive/
+#   negative matrix lives in pubmode.ps1.
+# Compatible with Windows PowerShell 5.1 (pwsh / powershell.exe).
 $ProgressPreference = 'SilentlyContinue'
 $ErrorActionPreference = 'Continue'
 
@@ -11,6 +17,12 @@ $root = Split-Path -Parent $PSScriptRoot
 $log = Join-Path $root "smoke.txt"
 "" | Set-Content $log
 function Log($m) { $m | Tee-Object -FilePath $log -Append }
+
+$script:fail = 0
+function Assert($name, $cond, $detail) {
+  if ($cond) { Log "PASS  $name : $detail" }
+  else { Log "FAIL  $name : $detail"; $script:fail++ }
+}
 
 function Find-Port {
   $ports = @()
@@ -28,6 +40,36 @@ function Find-Port {
   return 0
 }
 
+# GET helper: returns @{ status; raw } — non-2xx captured via exception Response
+function Invoke-Get($uri) {
+  try {
+    $r = Invoke-WebRequest -Uri $uri -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
+    return [pscustomobject]@{ status = [int]$r.StatusCode; raw = $r.Content }
+  }
+  catch {
+    $st = $null
+    if ($_.Exception.Response) { $st = [int]$_.Exception.Response.StatusCode }
+    return [pscustomobject]@{ status = $st; raw = "" }
+  }
+}
+
+# POST official GUI RPC envelope to the gateway; returns @{ status; json }
+function Post-Rpc($base, $method, $payload) {
+  $body = @{ type = "client-request"; rpcId = "smoke-" + [guid]::NewGuid().ToString("N").Substring(0, 8); method = $method; payload = $payload } |
+    ConvertTo-Json -Depth 8 -Compress
+  try {
+    $r = Invoke-WebRequest -Uri "$base/api/$method" -Method Post -ContentType "application/json" -Body $body `
+      -TimeoutSec 20 -UseBasicParsing -ErrorAction Stop
+    $j = try { $r.Content | ConvertFrom-Json } catch { $null }
+    return [pscustomobject]@{ status = [int]$r.StatusCode; json = $j }
+  }
+  catch {
+    $st = $null
+    if ($_.Exception.Response) { $st = [int]$_.Exception.Response.StatusCode }
+    return [pscustomobject]@{ status = $st; json = $null }
+  }
+}
+
 if ($Port -eq 0) {
   Log "scanning loopback ports for /dsh-mini/api/health ..."
   $Port = Find-Port
@@ -39,132 +81,50 @@ $B = "http://127.0.0.1:$Port/dsh-mini/api"
 # 1) health
 try {
   $h = Invoke-WebRequest -Uri "$B/health" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-  Log "HEALTH: $($h.Content)"
+  $hj = $h.Content | ConvertFrom-Json
+  Assert "health" ($hj.ok -eq $true) "ok=$($hj.ok) servicesReady=$($hj.servicesReady) v=$($hj.version)"
 } catch { Log "FAIL health: $_"; exit 1 }
 
-# 2) gateway status (loopback is token-free)
+# 2) gateway status (loopback is token-free when publicMode is OFF)
+$gwPort = 0
 try {
-  $g = Invoke-WebRequest -Uri "$B/gateway" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-  $gw = $g.Content | ConvertFrom-Json
-  Log "GATEWAY: lanEnabled=$($gw.gateway.lanEnabled) host=$($gw.gateway.host) port=$($gw.gateway.port) ips=$($gw.gateway.lanIps -join ',') reachable=$($gw.gateway.reachable)"
-} catch { Log "WARN gateway: $_" }
-
-# 3) models catalog
-try {
-  $m = Invoke-WebRequest -Uri "$B/models" -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
-  $cat = $m.Content | ConvertFrom-Json
-  Log "MODELS: $($cat.models.Count) entries; default=$($cat.default.provider)/$($cat.default.model)"
-} catch { Log "WARN models: $_" }
-
-# 4) new session
-try {
-  $n = Invoke-WebRequest -Uri "$B/threads/new" -Method POST -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
-  $sid = (($n.Content | ConvertFrom-Json).id)
-  Log "NEW_SESSION: $sid"
-} catch { Log "FAIL new: $_"; exit 1 }
-
-# 5) upload a tiny text file (raw body + name query param)
-$upPath = ""
-try {
-  $tmpFile = Join-Path $env:TEMP ("dsh-mini-smoke-" + [guid]::NewGuid().ToString("N") + ".txt")
-  "dsh-mini smoke upload" | Set-Content $tmpFile -NoNewline
-  $bytes = [System.IO.File]::ReadAllBytes($tmpFile)
-  $upUrl = $B + "/upload?session=" + $sid + "&name=smoke-note.txt"
-  $u = Invoke-WebRequest -Uri $upUrl -Method POST -Body $bytes -ContentType "application/octet-stream" -TimeoutSec 20 -UseBasicParsing -ErrorAction Stop
-  $up = $u.Content | ConvertFrom-Json
-  $upPath = $up.path
-  Log "UPLOAD: name=$($up.name) size=$($up.size) path=$upPath"
-  Remove-Item $tmpFile -Force
-} catch { Log "WARN upload: $_" }
-
-# 6) send (with attachment reference when upload succeeded)
-try {
-  $body = @{ text = $Text }
-  if ($upPath) { $body.attachments = @(@{ name = "smoke-note.txt"; path = $upPath }) }
-  $s = Invoke-WebRequest -Uri "$B/threads/$sid/send" -Method POST -ContentType "application/json" `
-    -Body ($body | ConvertTo-Json) -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
-  Log "SEND: $($s.Content)"
-} catch { Log "FAIL send: $_"; exit 1 }
-
-# 7) SSE stream capture (~12s) via raw TCP
-$streamLog = Join-Path $root "smoke_stream.txt"
-"" | Set-Content $streamLog
-try {
-  $sock = New-Object System.Net.Sockets.TcpClient("127.0.0.1", $Port)
-  $ns = $sock.GetStream()
-  $req = "GET /dsh-mini/api/threads/$sid/stream HTTP/1.1`r`nHost: 127.0.0.1:$Port`r`nAccept: text/event-stream`r`nConnection: close`r`n`r`n"
-  $enc = [System.Text.Encoding]::ASCII
-  $ns.Write($enc.GetBytes($req), 0, $req.Length)
-  $sr = New-Object System.IO.StreamReader($ns)
-  $deadline = [datetime]::Now.AddSeconds(12)
-  $events = 0
-  while ([datetime]::Now -lt $deadline) {
-    if ($sr.Peek() -ge 0) {
-      $line = $sr.ReadLine()
-      if ($line) { $line | Add-Content $streamLog; if ($line -like 'event: step') { $events++ } }
-    } else { Start-Sleep -Milliseconds 200 }
+  $g = Invoke-Get "$B/gateway"
+  if ($g.status -eq 200) {
+    $gw = ($g.raw | ConvertFrom-Json).gateway
+    $gwPort = [int]$gw.gatewayPort
+    Assert "gateway.publicMode-off" ($gw.publicMode -eq $false) "publicMode=$($gw.publicMode)"
+    Assert "gateway.upload-cap" ([int]$gw.maxUploadMb -ge 1 -and [int]$gw.maxUploadMb -le 100) "maxUploadMb=$($gw.maxUploadMb)"
+    Log "GATEWAY: lanEnabled=$($gw.lanEnabled) port=$($gw.gatewayPort) ips=$($gw.lanIps -join ',') reachable=$($gw.reachable)"
+  } else {
+    Log "WARN gateway: status=$($g.status)"
   }
-  $sock.Close()
-  Log "SSE_STEP_EVENTS: $events"
-} catch { Log "WARN sse: $_" }
+} catch { Log "WARN gateway: $_" }
+if ($gwPort -eq 0) { Log "FAIL: no gateway port in status"; exit 1 }
+$GW = "http://127.0.0.1:$gwPort"
 
-# 8) poll history until assistant text appears
-$got = $false
-for ($i = 0; $i -lt 15; $i++) {
-  try {
-    $hh = Invoke-WebRequest -Uri "$B/threads/$sid/history" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-    $hist = $hh.Content | ConvertFrom-Json
-    $assistant = ($hist.steps | Where-Object { $_.type -eq 'assistant' -and $_.text })
-    if ($assistant) {
-      $got = $true
-      $txt = [string]$assistant.text
-      if ($txt.Length -gt 80) { $txt = $txt.Substring(0, 80) }
-      Log "HISTORY_OK: title=$($hist.title) model=$($hist.model.provider)/$($hist.model.model) assistant_reply_len=$($assistant.text.Length) first_80=$txt"
-      break
-    }
-  } catch { }
-  Start-Sleep -Seconds 2
+# 3) LAN gateway root — serves the v3 GUI (token-free on LAN / loopback)
+$r = Invoke-Get "$GW/"
+if ($r.status -eq 200) {
+  $hasBoot = $r.raw -match "__DSH_BOOT__"
+  Assert "gw-root" $hasBoot "status=200 hasBoot=$hasBoot len=$($r.raw.Length)"
+} else {
+  Assert "gw-root" $false "status=$($r.status) (expected 200)"
 }
-if (-not $got) { Log "FAIL: no assistant reply observed in history within timeout" }
 
-# 9) model read + per-session switch
-try {
-  $cur = (Invoke-WebRequest -Uri "$B/threads/$sid/model" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop).Content | ConvertFrom-Json
-  Log "MODEL_GET: $($cur.provider)/$($cur.model) (source=$($cur.source))"
-  $sw = Invoke-WebRequest -Uri "$B/threads/$sid/model" -Method POST -ContentType "application/json" `
-    -Body (@{provider=$cur.provider; model=$cur.model; reasoningEffort=$cur.reasoningEffort} | ConvertTo-Json) `
-    -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
-  Log "MODEL_SET: $($sw.Content)"
-} catch { Log "WARN model switch: $_" }
+# 4+) GUI RPC (read-only surface)
+$methods = @("host.describe", "session.list", "llm.providers", "llm.models", "workspace.list", "agentPreset.list", "skill.list", "settings.describe", "goals/list")
+foreach ($m in $methods) {
+  $res = Post-Rpc $GW $m @{}
+  $ok = $res.status -eq 200 -and $res.json -and $res.json.type -eq "server-response" -and $res.json.result.ok -eq $true
+  $detail = if ($ok) { "status=200 ok=true" } else { "status=$($res.status) code=$($res.json.result.error.code)" }
+  Assert "rpc.$m" $ok $detail
+}
 
-# 10) attach round-trip (already live -> should return immediately)
-try {
-  $a = Invoke-WebRequest -Uri "$B/threads/$sid/attach" -Method POST -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
-  Log "ATTACH: $($a.Content)"
-} catch { Log "WARN attach: $_" }
+# 5) main-port balance (loopback)
+$bl = Invoke-Get "$B/balance"
+Assert "balance" ($bl.status -eq 200) "status=$($bl.status) body=$($bl.raw)"
 
-# 11) thread list includes the new session with folded title/model
-try {
-  $t = Invoke-WebRequest -Uri "$B/threads" -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
-  $threads = ($t.Content | ConvertFrom-Json).threads
-  $mine = $threads | Where-Object { $_.id -eq $sid }
-  if ($mine) { Log "LIST_OK: found session; title=$($mine.title) live=$($mine.live)" }
-  else { Log "WARN list: session not found in /threads" }
-  Log "LIST_COUNT: $($threads.Count)"
-} catch { Log "WARN list: $_" }
-
-# 12) balance placeholder read
-try {
-  $bl = Invoke-WebRequest -Uri "$B/balance" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-  Log "BALANCE: $($bl.Content)"
-} catch { Log "WARN balance: $_" }
-
-# 13) stop (best-effort)
-try {
-  $st = Invoke-WebRequest -Uri "$B/threads/$sid/stop" -Method POST -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
-  Log "STOP: $($st.Content)"
-} catch { Log "WARN stop: $_" }
-
-$res = if ($got) { "RESULT: PASS" } else { "RESULT: FAIL" }
+$res = if ($script:fail -eq 0) { "RESULT: PASS" } else { "RESULT: FAIL ($script:fail)" }
 Log $res
-Log "Done. Stream raw lines -> smoke_stream.txt ; full log -> smoke.txt"
+Log "Done. Full log -> smoke.txt"
+exit $(if ($script:fail -eq 0) { 0 } else { 1 })

@@ -12,6 +12,7 @@
   "files": [
     "lib",
     "public",
+    "gui",
     "cordis.patch.yml",
     "README.md"
   ],
