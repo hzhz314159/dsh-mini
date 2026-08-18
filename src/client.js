@@ -623,7 +623,7 @@ window.__ModuleLoader__.load({
         h(
           "div",
           { className: "dsm-set-row" },
-          h("div", { className: "dsm-set-label" }, "外网穿透"),
+          h("div", { className: "dsm-set-label" }, "允许外网访问"),
           h(
             "label",
             { className: "dsm-switch" },
@@ -641,9 +641,9 @@ window.__ModuleLoader__.load({
           h(
             "div",
             { className: "dsm-set-hint" },
-            "用独立隧道（cloudflared 等）把网关 0.0.0.0:" +
+            "关闭 = 仅内部局域网：只有回环 / 本机 / 局域网 IP 可访问，来自公网域名或公网 IP 的请求（含 cloudflared 等隧道转出的连接）一律拒绝（即使带连接密钥）。开启 = 允许外网：用独立隧道把网关 0.0.0.0:" +
               (gw.gatewayPort != null ? gw.gatewayPort : "?") +
-              " 暴露到公网后开启。开启后所有请求（含隧道回环）都必须携带连接密钥，二维码自动切换为公网地址；局域网体验不受影响。"
+              " 暴露到公网，所有请求（含隧道回环）都必须携带连接密钥，二维码自动切换为公网地址；局域网体验不受影响。"
           ),
           pubMode
             ? h(

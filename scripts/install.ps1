@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string]$Target = "",
   [string]$DshHome = "",
   [switch]$SkipDesktop
@@ -7,6 +7,8 @@
 # -Target: DSH Desktop resources\app directory (auto-detected when empty)
 # -DshHome: DSH home override (defaults to ~/.dsh); useful for tests/custom homes
 $ErrorActionPreference = "Stop"
+# PS 5.1 控制台默认 GBK，中文 Write-Host 会乱码；统一 UTF-8 输出。
+try { $OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
 
 # Helper: recursively copy the public folder (defined before use to avoid
 # any function-resolution ordering issues across PowerShell editions).
@@ -43,9 +45,11 @@ if (-not $SkipDesktop) {
   $pluginDir = Join-Path $Target "assets\plugins\dsh-mini"
   New-Item -ItemType Directory -Force -Path (Join-Path $pluginDir "lib") | Out-Null
   New-Item -ItemType Directory -Force -Path (Join-Path $pluginDir "public") | Out-Null
+  New-Item -ItemType Directory -Force -Path (Join-Path $pluginDir "gui") | Out-Null
   Copy-Item (Join-Path $repo "package.json") (Join-Path $pluginDir "package.json") -Force
   Copy-Item (Join-Path $repo "lib\*.js") (Join-Path $pluginDir "lib") -Force
   Copy-Public (Join-Path $repo "public") (Join-Path $pluginDir "public")
+  Copy-Public (Join-Path $repo "gui") (Join-Path $pluginDir "gui")
   Write-Host "[1/3] plugin copied to $pluginDir"
 }
 
@@ -55,9 +59,11 @@ $profileDir = Join-Path $DshHome "profiles\web"
 $dest = Join-Path $profileDir "node_modules\@deepseek-ai\dsh-mini"
 New-Item -ItemType Directory -Force -Path (Join-Path $dest "lib") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $dest "public") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $dest "gui") | Out-Null
 Copy-Item (Join-Path $repo "package.json") (Join-Path $dest "package.json") -Force
 Copy-Item (Join-Path $repo "lib\*.js") (Join-Path $dest "lib") -Force
 Copy-Public (Join-Path $repo "public") (Join-Path $dest "public")
+Copy-Public (Join-Path $repo "gui") (Join-Path $dest "gui")
 Write-Host "[2/3] plugin synced to $dest"
 
 # 3) Patch the profile composition to load the plugin
@@ -90,3 +96,6 @@ Write-Host "Done. Restart DSH Desktop (or 'dsh web'), then look for this line in
 Write-Host "  [dsh-mini] vX.Y.Z mounted at /dsh-mini/ (api: /dsh-mini/api/)"
 Write-Host "  [dsh-mini] bridge token (share with the phone app): <token>"
 Write-Host "Phone: open http://<电脑IP>:<端口>/dsh-mini/  (same Wi-Fi). Loopback is token-free; LAN needs the token."
+Write-Host ""
+Write-Host "安全默认：外网穿透（允许外网访问）默认关闭，仅本机+局域网可用。"
+Write-Host "       如需外网访问，见 README「三·外网穿透」：起隧道 + 设置里开启「允许外网访问」并填 publicUrl。"
